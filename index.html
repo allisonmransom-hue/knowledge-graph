@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Library Knowledge Graph Explorer</title>
+  <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --card-bg: #ffffff;
+      --border: #dadde5;
+      --accent: #3b82f6;
+      --accent-soft: #e0ebff;
+      --text: #111827;
+      --muted: #6b7280;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    header {
+      padding: 0.9rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      background: rgba(255,255,255,0.9);
+      backdrop-filter: blur(10px);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    header .title {
+      font-weight: 600;
+      font-size: 1rem;
+    }
+
+    header .subtitle {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    #controls {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    #controls input[type="text"] {
+      padding: 0.4rem 0.6rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      font-size: 0.85rem;
+      min-width: 180px;
+      outline: none;
+      background: #f9fafb;
+    }
+
+    #controls input[type="text"]:focus {
+      border-color: var(--accent);
+      background: #ffffff;
+      box-shadow: 0 0 0 1px rgba(59,130,246,0.15);
+    }
+
+    button {
+      cursor: pointer;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: #ffffff;
+      font-size: 0.8rem;
+      padding: 0.35rem 0.9rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      color: var(--text);
+    }
+
+    button.primary {
+      background: var(--accent);
+      color: #ffffff;
+      border-color: var(--accent);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+
+    #status {
+      font-size: 0.78rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    main {
+      padding: 0.75rem 1.5rem 1.5rem;
+      flex: 1;
+      display: flex;
+      gap: 0.75rem;
+      min-height: 0;
+    }
+
+    #cy-card {
+      flex: 1;
+      background: var(--card-bg);
+      border-radius: 1.2rem;
+      box-shadow: 0 10px 25px rgba(15,23,42,0.05);
+      padding: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    #cy {
+      flex: 1;
+      border-radius: 0.8rem;
+      border: 1px solid var(--border);
+      background: #f9fafb;
+      min-height: 0;
+    }
+
+    #side-panel {
+      width: 260px;
+      max-width: 35%;
+      background: transparent;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .panel-card {
+      background: var(--card-bg);
+      border-radius: 1.2rem;
+      box-shadow: 0 10px 25px rgba(15,23,42,0.05);
+      padding: 0.8rem 0.9rem;
+      font-size: 0.8rem;
+      border: 1px solid var(--border);
+    }
+
+    .panel-card h3 {
+      margin: 0 0 0.35rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .panel-card p {
+      margin: 0.1rem 0;
+      color: var(--muted);
+    }
+
+    .detail-label {
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+
+    .detail-value {
+      font-size: 0.78rem;
+      color: var(--muted);
+      word-break: break-all;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.1rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      background: var(--accent-soft);
+      color: var(--accent);
+      margin-right: 0.25rem;
+    }
+
+    @media (max-width: 900px) {
+      main {
+        flex-direction: column;
+      }
+      #side-panel {
+        width: 100%;
+        max-width: 100%;
+        flex-direction: row;
+        overflow-x: auto;
+      }
+      .panel-card {
+        min-width: 210px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <div class="title">Library Knowledge Graph Explorer</div>
+      <div class="subtitle">Explore books, subjects, and locations as a connected graph.</div>
+    </div>
+    <div id="controls">
+      <input type="text" id="searchInput" placeholder="Search label or URI fragment…">
+      <button id="searchBtn">Search &amp; center</button>
+      <button id="expandBtn" class="primary">Expand neighbors</button>
+      <button id="resetBtn">Reset view</button>
+      <span id="status">Loading…</span>
+    </div>
+  </header>
+
+  <main>
+    <div id="cy-card">
+      <div id="cy"></div>
+    </div>
+    <div id="side-panel">
+      <div class="panel-card" id="node-info">
+        <h3>Selected node</h3>
+        <p>No node selected. Click a node to see details.</p>
+      </div>
+      <div class="panel-card">
+        <h3>Tips</h3>
+        <p>• Drag to move the graph, scroll to zoom.</p>
+        <p>• Click a node, then “Expand neighbors” to load related entities.</p>
+        <p>• Use search to jump to entities by label or URI fragment.</p>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // === CONFIG ===
+    const SPARQL_ENDPOINT = "https://api.triplydb.com/datasets/Allisonmransom/library-knowledge-graph/sparql";
+
+    // Initial query: focus on your main structure (book, location, subject)
+    const INITIAL_QUERY = `
+PREFIX prop: <http://example.org/property/>
+
+SELECT ?s ?p ?o
+WHERE {
+  ?s ?p ?o .
+  FILTER(?p IN (prop:book, prop:location, prop:subject))
+}
+LIMIT 200
+`.trim();
+
+    // Query to expand neighbors of a given node
+    function neighborQuery(iri) {
+      return `
+SELECT ?s ?p ?o
+WHERE {
+  {
+    VALUES ?center { <${iri}> }
+    ?center ?p ?o .
+    BIND(?center AS ?s)
+  }
+  UNION
+  {
+    VALUES ?center { <${iri}> }
+    ?s ?p ?center .
+    BIND(?center AS ?o)
+  }
+}
+LIMIT 200
+`.trim();
+    }
+
+    // Query to find a node by label or URI fragment
+    function searchQuery(term) {
+      const esc = term.replace(/"/g, '\\"');
+      return `
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT DISTINCT ?s ?label
+WHERE {
+  ?s ?p ?o .
+  OPTIONAL { ?s rdfs:label ?label . }
+  FILTER(
+    CONTAINS(LCASE(STR(?s)), LCASE("${esc}")) ||
+    (BOUND(?label) && CONTAINS(LCASE(STR(?label)), LCASE("${esc}")))
+  )
+}
+LIMIT 20
+`.trim();
+    }
+
+    const statusEl = document.getElementById('status');
+    const searchInput = document.getElementById('searchInput');
+    const searchBtn = document.getElementById('searchBtn');
+    const expandBtn = document.getElementById('expandBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const nodeInfo = document.getElementById('node-info');
+
+    let cy = null;
+    const knownNodes = new Set();
+    const knownEdges = new Set();
+
+    function setStatus(msg) {
+      statusEl.textContent = msg;
+    }
+
+    function makeLabel(term, labelFromRdfs) {
+      if (labelFromRdfs) return labelFromRdfs;
+      if (!term) return "";
+      const val = term.value;
+      const type = term.type;
+      if (type === "literal") return val;
+      if (type === "uri") {
+        const partsHash = val.split("#");
+        const lastHash = partsHash[partsHash.length - 1];
+        const partsSlash = lastHash.split("/");
+        return partsSlash[partsSlash.length - 1] || val;
+      }
+      return val;
+    }
+
+    // Build Cytoscape elements from SPARQL JSON results
+    function addBindingsToGraph(bindings) {
+      const newElements = [];
+
+      bindings.forEach(row => {
+        const s = row.s;
+        const p = row.p;
+        const o = row.o;
+        const sLabel = row.sLabel ? row.sLabel.value : null;
+        const oLabel = row.oLabel ? row.oLabel.value : null;
+        const pLabel = row.pLabel ? row.pLabel.value : null;
+
+        if (!s || !p || !o) return;
+
+        const sId = s.value;
+        const oId = o.value;
+        const edgeId = sId + " " + p.value + " " + oId;
+
+        if (!knownNodes.has(sId)) {
+          knownNodes.add(sId);
+          newElements.push({
+            group: "nodes",
+            data: {
+              id: sId,
+              label: makeLabel(s, sLabel),
+              raw: s.value,
+              type: s.type,
+              isLiteral: s.type === "literal" ? "true" : "false"
+            }
+          });
+        }
+
+        if (!knownNodes.has(oId)) {
+          knownNodes.add(oId);
+          newElements.push({
+            group: "nodes",
+            data: {
+              id: oId,
+              label: makeLabel(o, oLabel),
+              raw: o.value,
+              type: o.type,
+              isLiteral: o.type === "literal" ? "true" : "false"
+            }
+          });
+        }
+
+        if (!knownEdges.has(edgeId)) {
+          knownEdges.add(edgeId);
+          newElements.push({
+            group: "edges",
+            data: {
+              id: edgeId,
+              source: sId,
+              target: oId,
+              label: makeLabel(p, pLabel),
+              raw: p.value
+            }
+          });
+        }
+      });
+
+      if (newElements.length > 0) {
+        cy.add(newElements);
+        const layout = cy.layout({
+          name: 'cose',
+          animate: true
+        });
+        layout.run();
+      }
+
+      setStatus(`Graph has ${cy.nodes().length} nodes and ${cy.edges().length} edges.`);
+    }
+
+    async function runSparql(query) {
+      const response = await fetch(SPARQL_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Accept": "application/sparql-results+json",
+          "Content-Type": "application/sparql-query"
+        },
+        body: query
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error("HTTP " + response.status + " – " + text.slice(0, 200));
+      }
+
+      const data = await response.json();
+      if (!data.results || !data.results.bindings) {
+        throw new Error("Unexpected SPARQL JSON format.");
+      }
+      return data.results.bindings;
+    }
+
+    function showNodeInfo(node) {
+      if (!node) {
+        nodeInfo.innerHTML = `
+          <h3>Selected node</h3>
+          <p>No node selected. Click a node to see details.</p>
+        `;
+        return;
+      }
+
+      const d = node.data();
+      nodeInfo.innerHTML = `
+        <h3>Selected node</h3>
+        <p class="detail-label">Label</p>
+        <p class="detail-value">${d.label || '<em>(no label)</em>'}</p>
+        <p class="detail-label">URI / value</p>
+        <p class="detail-value">${d.raw || ''}</p>
+        <p class="detail-label">Type</p>
+        <p class="detail-value">
+          <span class="badge">${d.isLiteral === "true" ? "Literal" : "Resource"}</span>
+        </p>
+      `;
+    }
+
+    async function initialLoad() {
+      setStatus("Loading initial graph…");
+      try {
+        const bindings = await runSparql(INITIAL_QUERY);
+        if (bindings.length === 0) {
+          setStatus("No triples returned by initial query.");
+          return;
+        }
+        addBindingsToGraph(bindings);
+        setStatus(`Loaded initial ${bindings.length} triples. Select a node and click “Expand neighbors”.`);
+      } catch (err) {
+        console.error(err);
+        setStatus("Error: " + err.message);
+      }
+    }
+
+    async function expandSelectedNode() {
+      const selected = cy.$('node:selected');
+      if (selected.length === 0) {
+        alert("Select a node first (click a node), then click “Expand neighbors”.");
+        return;
+      }
+      const node = selected[0];
+      const iri = node.data('raw');
+      if (!iri || node.data('isLiteral') === "true") {
+        alert("Expansion is only supported for resource nodes (IRIs), not literals.");
+        return;
+      }
+
+      setStatus(`Expanding neighbors for node: ${node.data('label') || iri}…`);
+      try {
+        const bindings = await runSparql(neighborQuery(iri));
+        if (bindings.length === 0) {
+          setStatus("No additional neighbors found for this node.");
+          return;
+        }
+        addBindingsToGraph(bindings);
+        // Keep selected node centered
+        cy.center(node);
+        setStatus(`Expanded neighbors for ${node.data('label') || iri}.`);
+      } catch (err) {
+        console.error(err);
+        setStatus("Error expanding neighbors: " + err.message);
+      }
+    }
+
+    async function searchAndCenter() {
+      const term = searchInput.value.trim();
+      if (!term) {
+        alert("Enter a search term (label or URI fragment).");
+        return;
+      }
+
+      setStatus(`Searching for “${term}”…`);
+      try {
+        const bindings = await runSparql(searchQuery(term));
+        if (bindings.length === 0) {
+          setStatus(`No matches for “${term}”.`);
+          return;
+        }
+
+        const first = bindings[0];
+        const s = first.s;
+        const label = first.label ? first.label.value : makeLabel(s);
+
+        // Ensure the node exists in the graph; if not, add it standalone
+        const id = s.value;
+        if (!knownNodes.has(id)) {
+          knownNodes.add(id);
+          cy.add({
+            group: "nodes",
+            data: {
+              id: id,
+              label: label,
+              raw: s.value,
+              type: s.type,
+              isLiteral: s.type === "literal" ? "true" : "false"
+            }
+          });
+        }
+
+        const node = cy.getElementById(id);
+        cy.elements().unselect();
+        node.select();
+        cy.animate({
+          center: { eles: node },
+          zoom: 1.3
+        }, { duration: 500 });
+        showNodeInfo(node);
+        setStatus(`Centered on “${label}”. (First of ${bindings.length} matches.)`);
+      } catch (err) {
+        console.error(err);
+        setStatus("Error during search: " + err.message);
+      }
+    }
+
+    function resetView() {
+      cy.fit();
+      cy.elements().unselect();
+      showNodeInfo(null);
+      setStatus(`Graph has ${cy.nodes().length} nodes and ${cy.edges().length} edges.`);
+    }
+
+    function initCytoscape() {
+      cy = cytoscape({
+        container: document.getElementById('cy'),
+        elements: [],
+        layout: { name: 'grid' },
+        style: [
+          {
+            selector: 'node',
+            style: {
+              'label': 'data(label)',
+              'text-valign': 'center',
+              'text-halign': 'center',
+              'font-size': '9px',
+              'background-color': '#ffffff',
+              'border-color': '#d1d5db',
+              'border-width': 1,
+              'border-opacity': 1,
+              'background-opacity': 1,
+              'shape': 'round-rectangle',
+              'padding': '6px 8px',
+              'width': 'label',
+              'height': 'label'
+            }
+          },
+          {
+            selector: 'node[isLiteral = "true"]',
+            style: {
+              'border-style': 'dashed',
+              'font-style': 'italic',
+              'background-color': '#f9fafb'
+            }
+          },
+          {
+            selector: 'node:selected',
+            style: {
+              'border-color': '#3b82f6',
+              'border-width': 2,
+              'background-color': '#eff6ff'
+            }
+          },
+          {
+            selector: 'edge',
+            style: {
+              'curve-style': 'bezier',
+              'target-arrow-shape': 'triangle',
+              'arrow-scale': 0.7,
+              'width': 1,
+              'line-color': '#d1d5db',
+              'target-arrow-color': '#d1d5db',
+              'label': 'data(label)',
+              'font-size': '7px',
+              'text-background-color': '#ffffff',
+              'text-background-opacity': 0.7,
+              'text-background-padding': 1,
+              'text-rotation': 'autorotate'
+            }
+          },
+          {
+            selector: 'edge:selected',
+            style: {
+              'line-color': '#3b82f6',
+              'target-arrow-color': '#3b82f6'
+            }
+          }
+        ]
+      });
+
+      cy.on('select', 'node', (evt) => {
+        showNodeInfo(evt.target);
+      });
+
+      cy.on('unselect', 'node', () => {
+        showNodeInfo(null);
+      });
+    }
+
+    // Wire up UI
+    searchBtn.addEventListener('click', searchAndCenter);
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        searchAndCenter();
+      }
+    });
+    expandBtn.addEventListener('click', expandSelectedNode);
+    resetBtn.addEventListener('click', resetView);
+
+    // Init app
+    initCytoscape();
+    initialLoad();
+  </script>
+</body>
+</html>
