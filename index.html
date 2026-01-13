@@ -1,634 +1,415 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Library Knowledge Graph Explorer</title>
-  <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Graph Search Explorer</title>
+
+  <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+
   <style>
-    :root {
-      --bg: #f6f7fb;
-      --card-bg: #ffffff;
-      --border: #dadde5;
-      --accent: #3b82f6;
-      --accent-soft: #e0ebff;
-      --text: #111827;
-      --muted: #6b7280;
+    :root { --border:#ddd; --muted:#666; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    header { padding: 14px; border-bottom: 1px solid var(--border); display: grid; gap: 10px; }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    input, select {
+      padding: 10px 12px; font-size: 16px; border: 1px solid var(--border);
+      border-radius: 10px;
     }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-    }
-
-    header {
-      padding: 0.9rem 1.5rem;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 1rem;
-      background: rgba(255,255,255,0.9);
-      backdrop-filter: blur(10px);
-      position: sticky;
-      top: 0;
-      z-index: 10;
-    }
-
-    header .title {
-      font-weight: 600;
-      font-size: 1rem;
-    }
-
-    header .subtitle {
-      font-size: 0.8rem;
-      color: var(--muted);
-    }
-
-    #controls {
-      display: flex;
-      gap: 0.75rem;
-      align-items: center;
-      flex-wrap: wrap;
-    }
-
-    #controls input[type="text"] {
-      padding: 0.4rem 0.6rem;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      font-size: 0.85rem;
-      min-width: 180px;
-      outline: none;
-      background: #f9fafb;
-    }
-
-    #controls input[type="text"]:focus {
-      border-color: var(--accent);
-      background: #ffffff;
-      box-shadow: 0 0 0 1px rgba(59,130,246,0.15);
-    }
-
+    input { width: min(520px, 100%); }
     button {
-      cursor: pointer;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      background: #ffffff;
-      font-size: 0.8rem;
-      padding: 0.35rem 0.9rem;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.3rem;
-      color: var(--text);
+      padding: 10px 14px; font-size: 15px; cursor: pointer;
+      border: 1px solid var(--border); background: #fff; border-radius: 10px;
     }
-
-    button.primary {
-      background: var(--accent);
-      color: #ffffff;
-      border-color: var(--accent);
+    button:hover { background: #f7f7f7; }
+    .hint { color: var(--muted); font-size: 13px; }
+    #status { color: #333; font-size: 14px; }
+    #details {
+      padding: 0 2px 2px 2px;
+      color: #333;
+      font-size: 13px;
+      line-height: 1.35;
     }
-
-    button:disabled {
-      opacity: 0.6;
-      cursor: default;
-    }
-
-    #status {
-      font-size: 0.78rem;
-      color: var(--muted);
-      white-space: nowrap;
-    }
-
-    main {
-      padding: 0.75rem 1.5rem 1.5rem;
-      flex: 1;
-      display: flex;
-      gap: 0.75rem;
-      min-height: 0;
-    }
-
-    #cy-card {
-      flex: 1;
-      background: var(--card-bg);
-      border-radius: 1.2rem;
-      box-shadow: 0 10px 25px rgba(15,23,42,0.05);
-      padding: 0.75rem;
-      display: flex;
-      flex-direction: column;
-      min-width: 0;
-    }
-
-    #cy {
-      flex: 1;
-      border-radius: 0.8rem;
-      border: 1px solid var(--border);
-      background: #f9fafb;
-      min-height: 0;
-    }
-
-    #side-panel {
-      width: 260px;
-      max-width: 35%;
-      background: transparent;
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-    }
-
-    .panel-card {
-      background: var(--card-bg);
-      border-radius: 1.2rem;
-      box-shadow: 0 10px 25px rgba(15,23,42,0.05);
-      padding: 0.8rem 0.9rem;
-      font-size: 0.8rem;
-      border: 1px solid var(--border);
-    }
-
-    .panel-card h3 {
-      margin: 0 0 0.35rem;
-      font-size: 0.85rem;
-      font-weight: 600;
-    }
-
-    .panel-card p {
-      margin: 0.1rem 0;
-      color: var(--muted);
-    }
-
-    .detail-label {
-      font-size: 0.8rem;
-      font-weight: 500;
-    }
-
-    .detail-value {
-      font-size: 0.78rem;
-      color: var(--muted);
-      word-break: break-all;
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 0.1rem 0.5rem;
-      border-radius: 999px;
-      font-size: 0.7rem;
-      background: var(--accent-soft);
-      color: var(--accent);
-      margin-right: 0.25rem;
-    }
-
-    @media (max-width: 900px) {
-      main {
-        flex-direction: column;
-      }
-      #side-panel {
-        width: 100%;
-        max-width: 100%;
-        flex-direction: row;
-        overflow-x: auto;
-      }
-      .panel-card {
-        min-width: 210px;
-      }
-    }
+    #details .muted { color: var(--muted); }
+    #cy { height: calc(100vh - 185px); width: 100vw; }
+    .pill { padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; font-size: 12px; background: #fafafa; }
   </style>
 </head>
+
 <body>
-  <header>
-    <div>
-      <div class="title">Library Knowledge Graph Explorer</div>
-      <div class="subtitle">Explore books, subjects, and locations as a connected graph.</div>
-    </div>
-    <div id="controls">
-      <input type="text" id="searchInput" placeholder="Search label or URI fragment…">
-      <button id="searchBtn">Search &amp; center</button>
-      <button id="expandBtn" class="primary">Expand neighbors</button>
-      <button id="resetBtn">Reset view</button>
-      <span id="status">Loading…</span>
-    </div>
-  </header>
+<header>
+  <div class="row">
+    <strong>Search:</strong>
+    <input id="q" type="text" placeholder="e.g. psychology" />
+    <select id="field">
+      <option value="title" selected>Title</option>
+      <option value="subject">Subject</option>
+      <option value="any">Any field</option>
+    </select>
+    <button id="searchBtn">Search</button>
+    <button id="clearBtn">Clear</button>
+    <button id="fitBtn">Fit</button>
+    <span class="pill" id="endpointPill"></span>
+  </div>
 
-  <main>
-    <div id="cy-card">
-      <div id="cy"></div>
-    </div>
-    <div id="side-panel">
-      <div class="panel-card" id="node-info">
-        <h3>Selected node</h3>
-        <p>No node selected. Click a node to see details.</p>
-      </div>
-      <div class="panel-card">
-        <h3>Tips</h3>
-        <p>• Drag to move the graph, scroll to zoom.</p>
-        <p>• Click a node, then “Expand neighbors” to load related entities.</p>
-        <p>• Use search to jump to entities by label or URI fragment.</p>
-      </div>
-    </div>
-  </main>
+  <div class="row">
+    <span class="hint">
+      Search returns <b>books only</b>. Click a <b>book</b> to reveal its <b>subjects</b>. Click a <b>subject</b> to load more books in that same subject.
+    </span>
+  </div>
 
-  <script>
-    // === CONFIG ===
-    const SPARQL_ENDPOINT = "https://api.triplydb.com/datasets/Allisonmransom/library-knowledge-graph/sparql";
+  <div id="status"></div>
+  <div id="details" class="hint"></div>
+</header>
 
-    // Initial query: focus on your main structure (book, location, subject)
-    const INITIAL_QUERY = `
-PREFIX prop: <http://example.org/property/>
+<div id="cy"></div>
 
-SELECT ?s ?p ?o
-WHERE {
-  ?s ?p ?o .
-  FILTER(?p IN (prop:book, prop:location, prop:subject))
+<script>
+/**
+ * Search-first graph explorer (TriplyDB SPARQL + Cytoscape)
+ * - Title default search
+ * - Friendly labels for subject URIs (e.g., Subject_LB -> LB)
+ * - Details panel
+ * - Cleaner edge labels ("matches", "subject", "has book")
+ */
+
+const ENDPOINT = "https://api.triplydb.com/datasets/Allisonmransom/deleted-records-knowledge-graph/sparql";
+document.getElementById("endpointPill").textContent = ENDPOINT;
+
+const qEl = document.getElementById("q");
+const fieldEl = document.getElementById("field");
+const statusEl = document.getElementById("status");
+const detailsEl = document.getElementById("details");
+
+function status(msg) { statusEl.textContent = msg; }
+function setDetails(html) { detailsEl.innerHTML = html || ""; }
+
+const cy = cytoscape({
+  container: document.getElementById("cy"),
+  elements: [],
+  style: [
+    { selector: "node", style: {
+        "label": "data(label)",
+        "text-wrap": "wrap",
+        "text-max-width": 190,
+        "font-size": 11
+      }
+    },
+    { selector: "node.term", style: { "font-size": 13, "border-width": 2 } },
+    { selector: "node.book", style: { } },
+    { selector: "node.subject", style: { "border-width": 2 } },
+    { selector: "edge", style: {
+        "label": "data(label)",
+        "font-size": 10,
+        "curve-style": "bezier",
+        "target-arrow-shape": "triangle"
+      }
+    },
+    { selector: ":selected", style: { "border-width": 4 } }
+  ],
+  layout: { name: "cose", animate: false }
+});
+
+function relayout() {
+  cy.layout({ name: "cose", animate: false }).run();
+  cy.fit();
 }
-LIMIT 200
-`.trim();
 
-    // Query to expand neighbors of a given node
-    function neighborQuery(iri) {
-      return `
-SELECT ?s ?p ?o
-WHERE {
-  {
-    VALUES ?center { <${iri}> }
-    ?center ?p ?o .
-    BIND(?center AS ?s)
+function esc(str) {
+  return String(str).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+/** Friendly labels:
+ * - URIs: use fragment, remove Subject_ prefix, underscores -> spaces, title-case
+ * - literals: truncate if long
+ */
+function shortLabel(v) {
+  if (!v) return "";
+
+  if (v.startsWith("http://") || v.startsWith("https://")) {
+    const hash = v.lastIndexOf("#");
+    const slash = v.lastIndexOf("/");
+    const cut = Math.max(hash, slash);
+    let frag = decodeURIComponent(v.slice(cut + 1)) || v;
+
+    frag = frag.replace(/^Subject[_-]/i, "");
+    frag = frag.replace(/^SUBJECT[_-]/, "");
+    frag = frag.replace(/^subj[_-]/i, "");
+    frag = frag.replace(/_/g, " ");
+    frag = frag.replace(/\s+/g, " ").trim();
+    frag = frag.replace(/\b\w/g, c => c.toUpperCase());
+
+    return frag || v;
   }
-  UNION
-  {
-    VALUES ?center { <${iri}> }
-    ?s ?p ?center .
-    BIND(?center AS ?o)
+
+  return v.length > 80 ? v.slice(0, 77) + "…" : v;
+}
+
+function ensureNode(id, label, classes, extra={}) {
+  if (cy.getElementById(id).empty()) {
+    cy.add({ data: { id, label, ...extra }, classes });
   }
 }
-LIMIT 200
-`.trim();
-    }
 
-    // Query to find a node by label or URI fragment
-    function searchQuery(term) {
-      const esc = term.replace(/"/g, '\\"');
-      return `
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-SELECT DISTINCT ?s ?label
-WHERE {
-  ?s ?p ?o .
-  OPTIONAL { ?s rdfs:label ?label . }
-  FILTER(
-    CONTAINS(LCASE(STR(?s)), LCASE("${esc}")) ||
-    (BOUND(?label) && CONTAINS(LCASE(STR(?label)), LCASE("${esc}")))
-  )
+function ensureEdge(id, source, target, label) {
+  if (cy.getElementById(id).empty()) {
+    cy.add({ data: { id, source, target, label } });
+  }
 }
-LIMIT 20
+
+async function sparql(query) {
+  const url = ENDPOINT + "?query=" + encodeURIComponent(query);
+  const resp = await fetch(url, { headers: { "Accept": "application/sparql-results+json" } });
+  const text = await resp.text();
+
+  if (!resp.ok) {
+    console.error("HTTP", resp.status, text);
+    throw new Error(`HTTP ${resp.status}. See console.`);
+  }
+  if (text.trim().startsWith("<")) {
+    console.error("HTML instead of JSON:", text.slice(0, 400));
+    throw new Error("Endpoint returned HTML (auth/access issue).");
+  }
+  return JSON.parse(text);
+}
+
+/**
+ * Predicates (guesses) — adjust if you later want precision.
+ * You observed "prop:title" in results, so we include that IRI first.
+ * (Assumption: prop: = http://example.org/property/)
+ */
+const TITLE_PREDICATES = [
+  "http://example.org/property/title",
+  "http://example.org/property/book",
+  "http://purl.org/dc/terms/title",
+  "http://www.w3.org/2000/01/rdf-schema#label",
+  "http://schema.org/name"
+];
+
+const SUBJECT_PREDICATES = [
+  "http://example.org/property/subject",
+  "http://purl.org/dc/terms/subject",
+  "http://schema.org/about"
+];
+
+function buildSearchQuery(term, field, limit=25, offset=0) {
+  const t = esc(term);
+
+  if (field === "title") {
+    return `
+SELECT DISTINCT ?book ?label
+WHERE {
+  ?book ?p ?label .
+  VALUES ?p { ${TITLE_PREDICATES.map(u => `<${u}>`).join(" ")} }
+  FILTER(CONTAINS(LCASE(STR(?label)), LCASE("${t}")))
+}
+ORDER BY STR(?book)
+LIMIT ${limit}
+OFFSET ${offset}
 `.trim();
+  }
+
+  if (field === "subject") {
+    return `
+SELECT DISTINCT ?book ?label
+WHERE {
+  ?book ?p ?label .
+  VALUES ?p { ${SUBJECT_PREDICATES.map(u => `<${u}>`).join(" ")} }
+  FILTER(CONTAINS(LCASE(STR(?label)), LCASE("${t}")))
+}
+ORDER BY STR(?book)
+LIMIT ${limit}
+OFFSET ${offset}
+`.trim();
+  }
+
+  // any field
+  return `
+SELECT DISTINCT ?book ?label
+WHERE {
+  ?book ?p ?label .
+  FILTER(CONTAINS(LCASE(STR(?label)), LCASE("${t}")))
+}
+ORDER BY STR(?book)
+LIMIT ${limit}
+OFFSET ${offset}
+`.trim();
+}
+
+function subjectsForBookQuery(bookIri, limit=30) {
+  return `
+SELECT DISTINCT ?subj
+WHERE {
+  <${bookIri}> ?p ?subj .
+  VALUES ?p { ${SUBJECT_PREDICATES.map(u => `<${u}>`).join(" ")} }
+}
+LIMIT ${limit}
+`.trim();
+}
+
+function booksByExactSubjectValueQuery(subjectValue, limit=25) {
+  // subjectValue may be a URI or a literal; we match via string contains to be resilient
+  const t = esc(subjectValue);
+  return `
+SELECT DISTINCT ?book ?title
+WHERE {
+  ?book ?p ?subj .
+  VALUES ?p { ${SUBJECT_PREDICATES.map(u => `<${u}>`).join(" ")} }
+  FILTER(CONTAINS(LCASE(STR(?subj)), LCASE("${t}")))
+
+  OPTIONAL { ?book <http://example.org/property/title> ?title }
+  OPTIONAL { ?book <http://example.org/property/book> ?title }
+  OPTIONAL { ?book <http://www.w3.org/2000/01/rdf-schema#label> ?title }
+  OPTIONAL { ?book <http://schema.org/name> ?title }
+}
+ORDER BY STR(?book)
+LIMIT ${limit}
+`.trim();
+}
+
+// App state
+let currentTermNodeId = null;
+let currentSearch = null;
+let currentOffset = 0;
+const PAGE_SIZE = 25;
+
+async function runSearch(reset=true) {
+  const term = qEl.value.trim();
+  const field = fieldEl.value;
+
+  if (!term) { status("Type a search term."); return; }
+
+  if (reset) {
+    cy.elements().remove();
+    setDetails("");
+    currentSearch = { term, field };
+    currentOffset = 0;
+    currentTermNodeId = `term:${field}:${term.toLowerCase()}`;
+
+    ensureNode(currentTermNodeId, term, "term", { kind: "term", term, field });
+
+    status(`Searching ${field} for "${term}"…`);
+  }
+
+  const json = await sparql(buildSearchQuery(term, field, PAGE_SIZE, currentOffset));
+  const rows = json?.results?.bindings || [];
+
+  if (!rows.length && currentOffset === 0) {
+    relayout();
+    status(`No results for "${term}" in ${field}. Try "Any field" or a different keyword.`);
+    return;
+  }
+
+  let added = 0;
+  for (const row of rows) {
+    const book = row.book?.value;
+    const label = row.label?.value;
+    if (!book) continue;
+
+    ensureNode(book, shortLabel(label || book), "book", { kind: "book", iri: book });
+    ensureEdge(`${currentTermNodeId}|matches|${book}`, currentTermNodeId, book, "matches");
+    added++;
+  }
+
+  currentOffset += PAGE_SIZE;
+  relayout();
+
+  const bookCount = cy.nodes(".book").length;
+  status(`Loaded ${bookCount} result book(s) for "${term}". Click a book to reveal its subjects.`);
+  setDetails(`<b>Search:</b> ${term} <span class="muted">(field: ${field}, showing ${bookCount} books)</span>`);
+}
+
+document.getElementById("searchBtn").addEventListener("click", () => runSearch(true));
+qEl.addEventListener("keydown", (e) => { if (e.key === "Enter") runSearch(true); });
+
+document.getElementById("clearBtn").addEventListener("click", () => {
+  cy.elements().remove();
+  currentTermNodeId = null;
+  currentSearch = null;
+  currentOffset = 0;
+  setDetails("");
+  status("Cleared.");
+});
+
+document.getElementById("fitBtn").addEventListener("click", () => cy.fit());
+
+// Clicking a book adds subject nodes (only then)
+cy.on("tap", "node", async (evt) => {
+  const node = evt.target;
+  const kind = node.data("kind");
+
+  if (kind !== "book") return;
+
+  const bookIri = node.data("iri") || node.id();
+  const bookLabel = node.data("label") || shortLabel(bookIri);
+
+  node.select();
+  setDetails(`<b>Selected book:</b> ${bookLabel}<br/><span class="muted">${bookIri}</span>`);
+  status("Loading subjects for that book…");
+
+  try {
+    const subjJson = await sparql(subjectsForBookQuery(bookIri, 30));
+    const subjRows = subjJson?.results?.bindings || [];
+
+    if (!subjRows.length) {
+      status("That book has no subject values (or subject predicate differs).");
+      setDetails(`<b>Selected book:</b> ${bookLabel}<br/><span class="muted">No subjects found for this record.</span>`);
+      return;
     }
 
-    const statusEl = document.getElementById('status');
-    const searchInput = document.getElementById('searchInput');
-    const searchBtn = document.getElementById('searchBtn');
-    const expandBtn = document.getElementById('expandBtn');
-    const resetBtn = document.getElementById('resetBtn');
-    const nodeInfo = document.getElementById('node-info');
+    let addedSubjects = 0;
+    for (const r of subjRows) {
+      const subjVal = r.subj?.value;
+      if (!subjVal) continue;
 
-    let cy = null;
-    const knownNodes = new Set();
-    const knownEdges = new Set();
-
-    function setStatus(msg) {
-      statusEl.textContent = msg;
+      const subjId = "subject:" + subjVal.toLowerCase();
+      ensureNode(subjId, shortLabel(subjVal), "subject", { kind: "subject", subjectValue: subjVal });
+      ensureEdge(`${bookIri}|subject|${subjId}`, bookIri, subjId, "subject");
+      addedSubjects++;
     }
 
-    function makeLabel(term, labelFromRdfs) {
-      if (labelFromRdfs) return labelFromRdfs;
-      if (!term) return "";
-      const val = term.value;
-      const type = term.type;
-      if (type === "literal") return val;
-      if (type === "uri") {
-        const partsHash = val.split("#");
-        const lastHash = partsHash[partsHash.length - 1];
-        const partsSlash = lastHash.split("/");
-        return partsSlash[partsSlash.length - 1] || val;
-      }
-      return val;
+    relayout();
+    status(`Added ${addedSubjects} subject node(s). Click a subject to load more books in that subject.`);
+    setDetails(`<b>Selected book:</b> ${bookLabel}<br/><b>Subjects loaded:</b> ${addedSubjects}`);
+  } catch (e) {
+    status(e.message);
+  }
+});
+
+// Clicking a subject loads more books in same subject
+cy.on("tap", "node.subject", async (evt) => {
+  const subjVal = evt.target.data("subjectValue");
+  const subjLabel = evt.target.data("label") || shortLabel(subjVal);
+
+  if (!subjVal) return;
+
+  evt.target.select();
+  status(`Finding more books in subject "${subjLabel}"…`);
+  setDetails(`<b>Subject:</b> ${subjLabel}<br/><span class="muted">${subjVal}</span>`);
+
+  try {
+    const json = await sparql(booksByExactSubjectValueQuery(subjVal, 25));
+    const rows = json?.results?.bindings || [];
+
+    let added = 0;
+    for (const row of rows) {
+      const book = row.book?.value;
+      const title = row.title?.value;
+      if (!book) continue;
+
+      ensureNode(book, shortLabel(title || book), "book", { kind: "book", iri: book });
+      ensureEdge(`${evt.target.id()}|hasBook|${book}`, evt.target.id(), book, "has book");
+      added++;
     }
 
-    // Build Cytoscape elements from SPARQL JSON results
-    function addBindingsToGraph(bindings) {
-      const newElements = [];
+    relayout();
+    status(added ? `Added ${added} book(s) for subject "${subjLabel}".` : `No additional books found for subject "${subjLabel}".`);
+  } catch (e) {
+    status(e.message);
+  }
+});
 
-      bindings.forEach(row => {
-        const s = row.s;
-        const p = row.p;
-        const o = row.o;
-        const sLabel = row.sLabel ? row.sLabel.value : null;
-        const oLabel = row.oLabel ? row.oLabel.value : null;
-        const pLabel = row.pLabel ? row.pLabel.value : null;
-
-        if (!s || !p || !o) return;
-
-        const sId = s.value;
-        const oId = o.value;
-        const edgeId = sId + " " + p.value + " " + oId;
-
-        if (!knownNodes.has(sId)) {
-          knownNodes.add(sId);
-          newElements.push({
-            group: "nodes",
-            data: {
-              id: sId,
-              label: makeLabel(s, sLabel),
-              raw: s.value,
-              type: s.type,
-              isLiteral: s.type === "literal" ? "true" : "false"
-            }
-          });
-        }
-
-        if (!knownNodes.has(oId)) {
-          knownNodes.add(oId);
-          newElements.push({
-            group: "nodes",
-            data: {
-              id: oId,
-              label: makeLabel(o, oLabel),
-              raw: o.value,
-              type: o.type,
-              isLiteral: o.type === "literal" ? "true" : "false"
-            }
-          });
-        }
-
-        if (!knownEdges.has(edgeId)) {
-          knownEdges.add(edgeId);
-          newElements.push({
-            group: "edges",
-            data: {
-              id: edgeId,
-              source: sId,
-              target: oId,
-              label: makeLabel(p, pLabel),
-              raw: p.value
-            }
-          });
-        }
-      });
-
-      if (newElements.length > 0) {
-        cy.add(newElements);
-        const layout = cy.layout({
-          name: 'cose',
-          animate: true
-        });
-        layout.run();
-      }
-
-      setStatus(`Graph has ${cy.nodes().length} nodes and ${cy.edges().length} edges.`);
-    }
-
-    async function runSparql(query) {
-      const response = await fetch(SPARQL_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "Accept": "application/sparql-results+json",
-          "Content-Type": "application/sparql-query"
-        },
-        body: query
-      });
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error("HTTP " + response.status + " – " + text.slice(0, 200));
-      }
-
-      const data = await response.json();
-      if (!data.results || !data.results.bindings) {
-        throw new Error("Unexpected SPARQL JSON format.");
-      }
-      return data.results.bindings;
-    }
-
-    function showNodeInfo(node) {
-      if (!node) {
-        nodeInfo.innerHTML = `
-          <h3>Selected node</h3>
-          <p>No node selected. Click a node to see details.</p>
-        `;
-        return;
-      }
-
-      const d = node.data();
-      nodeInfo.innerHTML = `
-        <h3>Selected node</h3>
-        <p class="detail-label">Label</p>
-        <p class="detail-value">${d.label || '<em>(no label)</em>'}</p>
-        <p class="detail-label">URI / value</p>
-        <p class="detail-value">${d.raw || ''}</p>
-        <p class="detail-label">Type</p>
-        <p class="detail-value">
-          <span class="badge">${d.isLiteral === "true" ? "Literal" : "Resource"}</span>
-        </p>
-      `;
-    }
-
-    async function initialLoad() {
-      setStatus("Loading initial graph…");
-      try {
-        const bindings = await runSparql(INITIAL_QUERY);
-        if (bindings.length === 0) {
-          setStatus("No triples returned by initial query.");
-          return;
-        }
-        addBindingsToGraph(bindings);
-        setStatus(`Loaded initial ${bindings.length} triples. Select a node and click “Expand neighbors”.`);
-      } catch (err) {
-        console.error(err);
-        setStatus("Error: " + err.message);
-      }
-    }
-
-    async function expandSelectedNode() {
-      const selected = cy.$('node:selected');
-      if (selected.length === 0) {
-        alert("Select a node first (click a node), then click “Expand neighbors”.");
-        return;
-      }
-      const node = selected[0];
-      const iri = node.data('raw');
-      if (!iri || node.data('isLiteral') === "true") {
-        alert("Expansion is only supported for resource nodes (IRIs), not literals.");
-        return;
-      }
-
-      setStatus(`Expanding neighbors for node: ${node.data('label') || iri}…`);
-      try {
-        const bindings = await runSparql(neighborQuery(iri));
-        if (bindings.length === 0) {
-          setStatus("No additional neighbors found for this node.");
-          return;
-        }
-        addBindingsToGraph(bindings);
-        // Keep selected node centered
-        cy.center(node);
-        setStatus(`Expanded neighbors for ${node.data('label') || iri}.`);
-      } catch (err) {
-        console.error(err);
-        setStatus("Error expanding neighbors: " + err.message);
-      }
-    }
-
-    async function searchAndCenter() {
-      const term = searchInput.value.trim();
-      if (!term) {
-        alert("Enter a search term (label or URI fragment).");
-        return;
-      }
-
-      setStatus(`Searching for “${term}”…`);
-      try {
-        const bindings = await runSparql(searchQuery(term));
-        if (bindings.length === 0) {
-          setStatus(`No matches for “${term}”.`);
-          return;
-        }
-
-        const first = bindings[0];
-        const s = first.s;
-        const label = first.label ? first.label.value : makeLabel(s);
-
-        // Ensure the node exists in the graph; if not, add it standalone
-        const id = s.value;
-        if (!knownNodes.has(id)) {
-          knownNodes.add(id);
-          cy.add({
-            group: "nodes",
-            data: {
-              id: id,
-              label: label,
-              raw: s.value,
-              type: s.type,
-              isLiteral: s.type === "literal" ? "true" : "false"
-            }
-          });
-        }
-
-        const node = cy.getElementById(id);
-        cy.elements().unselect();
-        node.select();
-        cy.animate({
-          center: { eles: node },
-          zoom: 1.3
-        }, { duration: 500 });
-        showNodeInfo(node);
-        setStatus(`Centered on “${label}”. (First of ${bindings.length} matches.)`);
-      } catch (err) {
-        console.error(err);
-        setStatus("Error during search: " + err.message);
-      }
-    }
-
-    function resetView() {
-      cy.fit();
-      cy.elements().unselect();
-      showNodeInfo(null);
-      setStatus(`Graph has ${cy.nodes().length} nodes and ${cy.edges().length} edges.`);
-    }
-
-    function initCytoscape() {
-      cy = cytoscape({
-        container: document.getElementById('cy'),
-        elements: [],
-        layout: { name: 'grid' },
-        style: [
-          {
-            selector: 'node',
-            style: {
-              'label': 'data(label)',
-              'text-valign': 'center',
-              'text-halign': 'center',
-              'font-size': '9px',
-              'background-color': '#ffffff',
-              'border-color': '#d1d5db',
-              'border-width': 1,
-              'border-opacity': 1,
-              'background-opacity': 1,
-              'shape': 'round-rectangle',
-              'padding': '6px 8px',
-              'width': 'label',
-              'height': 'label'
-            }
-          },
-          {
-            selector: 'node[isLiteral = "true"]',
-            style: {
-              'border-style': 'dashed',
-              'font-style': 'italic',
-              'background-color': '#f9fafb'
-            }
-          },
-          {
-            selector: 'node:selected',
-            style: {
-              'border-color': '#3b82f6',
-              'border-width': 2,
-              'background-color': '#eff6ff'
-            }
-          },
-          {
-            selector: 'edge',
-            style: {
-              'curve-style': 'bezier',
-              'target-arrow-shape': 'triangle',
-              'arrow-scale': 0.7,
-              'width': 1,
-              'line-color': '#d1d5db',
-              'target-arrow-color': '#d1d5db',
-              'label': 'data(label)',
-              'font-size': '7px',
-              'text-background-color': '#ffffff',
-              'text-background-opacity': 0.7,
-              'text-background-padding': 1,
-              'text-rotation': 'autorotate'
-            }
-          },
-          {
-            selector: 'edge:selected',
-            style: {
-              'line-color': '#3b82f6',
-              'target-arrow-color': '#3b82f6'
-            }
-          }
-        ]
-      });
-
-      cy.on('select', 'node', (evt) => {
-        showNodeInfo(evt.target);
-      });
-
-      cy.on('unselect', 'node', () => {
-        showNodeInfo(null);
-      });
-    }
-
-    // Wire up UI
-    searchBtn.addEventListener('click', searchAndCenter);
-    searchInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        searchAndCenter();
-      }
-    });
-    expandBtn.addEventListener('click', expandSelectedNode);
-    resetBtn.addEventListener('click', resetView);
-
-    // Init app
-    initCytoscape();
-    initialLoad();
-  </script>
+status('Type a search term (e.g. "psychology"). Default is Title. Click a book to reveal subjects.');
+</script>
 </body>
 </html>
