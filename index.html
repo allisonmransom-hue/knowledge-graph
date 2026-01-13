@@ -8,8 +8,9 @@
   <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
 
   <style>
-    :root { --border:#ddd; --muted:#666; }
-    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    :root { --border:#ddd; --muted:#666; --bg:#fff; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: var(--bg); }
+
     header { padding: 14px; border-bottom: 1px solid var(--border); display: grid; gap: 10px; }
     .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     input, select {
@@ -24,15 +25,78 @@
     button:hover { background: #f7f7f7; }
     .hint { color: var(--muted); font-size: 13px; }
     #status { color: #333; font-size: 14px; }
-    #details {
-      padding: 0 2px 2px 2px;
-      color: #333;
-      font-size: 13px;
-      line-height: 1.35;
-    }
-    #details .muted { color: var(--muted); }
-    #cy { height: calc(100vh - 185px); width: 100vw; }
     .pill { padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; font-size: 12px; background: #fafafa; }
+
+    /* Layout: graph + right panel */
+    .main {
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      height: calc(100vh - 190px);
+      min-height: 420px;
+    }
+    #cy { width: 100%; height: 100%; border-right: 1px solid var(--border); }
+
+    /* Details panel */
+    .panel {
+      height: 100%;
+      overflow: auto;
+      padding: 14px;
+    }
+    .panel h2 {
+      margin: 0 0 8px 0;
+      font-size: 16px;
+    }
+    .panel .sub {
+      color: var(--muted);
+      font-size: 12px;
+      word-break: break-all;
+      margin-bottom: 12px;
+    }
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px;
+      margin-bottom: 12px;
+      background: #fff;
+    }
+    .kv {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 8px 10px;
+      align-items: start;
+      font-size: 13px;
+    }
+    .k {
+      color: var(--muted);
+      word-break: break-word;
+    }
+    .v {
+      word-break: break-word;
+    }
+    .v a { color: inherit; text-decoration: underline; cursor: pointer; }
+    .badge {
+      display: inline-block;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 12px;
+      margin-right: 6px;
+      margin-bottom: 6px;
+      background: #fafafa;
+      cursor: pointer;
+    }
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    /* Small screens: stack */
+    @media (max-width: 900px) {
+      .main { grid-template-columns: 1fr; }
+      #cy { border-right: none; border-bottom: 1px solid var(--border); height: 60vh; }
+    }
   </style>
 </head>
 
@@ -54,23 +118,31 @@
 
   <div class="row">
     <span class="hint">
-      Search returns <b>books only</b>. Click a <b>book</b> to reveal its <b>subjects</b>. Click a <b>subject</b> to load more books in that same subject.
+      Search returns <b>books only</b>. Click a <b>book</b> to reveal its <b>subjects</b> and load the full record in the panel.
+      Click a <b>subject</b> to load more books in that subject.
     </span>
   </div>
 
   <div id="status"></div>
-  <div id="details" class="hint"></div>
 </header>
 
-<div id="cy"></div>
+<div class="main">
+  <div id="cy"></div>
+
+  <aside class="panel" id="panel">
+    <div class="card">
+      <h2>Book details</h2>
+      <div class="sub">Click a book node to see all associated data here.</div>
+      <div class="hint">
+        Tip: In the details panel, you can click subject/value chips to explore related books.
+      </div>
+    </div>
+  </aside>
+</div>
 
 <script>
 /**
- * Search-first graph explorer (TriplyDB SPARQL + Cytoscape)
- * - Title default search
- * - Friendly labels for subject URIs (e.g., Subject_LB -> LB)
- * - Details panel
- * - Cleaner edge labels ("matches", "subject", "has book")
+ * Search-first graph explorer + Details side panel (TriplyDB SPARQL + Cytoscape)
  */
 
 const ENDPOINT = "https://api.triplydb.com/datasets/Allisonmransom/deleted-records-knowledge-graph/sparql";
@@ -79,10 +151,9 @@ document.getElementById("endpointPill").textContent = ENDPOINT;
 const qEl = document.getElementById("q");
 const fieldEl = document.getElementById("field");
 const statusEl = document.getElementById("status");
-const detailsEl = document.getElementById("details");
+const panelEl = document.getElementById("panel");
 
 function status(msg) { statusEl.textContent = msg; }
-function setDetails(html) { detailsEl.innerHTML = html || ""; }
 
 const cy = cytoscape({
   container: document.getElementById("cy"),
@@ -96,7 +167,6 @@ const cy = cytoscape({
       }
     },
     { selector: "node.term", style: { "font-size": 13, "border-width": 2 } },
-    { selector: "node.book", style: { } },
     { selector: "node.subject", style: { "border-width": 2 } },
     { selector: "edge", style: {
         "label": "data(label)",
@@ -119,13 +189,9 @@ function esc(str) {
   return String(str).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
-/** Friendly labels:
- * - URIs: use fragment, remove Subject_ prefix, underscores -> spaces, title-case
- * - literals: truncate if long
- */
+/** Friendly labels for URIs and literals */
 function shortLabel(v) {
   if (!v) return "";
-
   if (v.startsWith("http://") || v.startsWith("https://")) {
     const hash = v.lastIndexOf("#");
     const slash = v.lastIndexOf("/");
@@ -133,7 +199,6 @@ function shortLabel(v) {
     let frag = decodeURIComponent(v.slice(cut + 1)) || v;
 
     frag = frag.replace(/^Subject[_-]/i, "");
-    frag = frag.replace(/^SUBJECT[_-]/, "");
     frag = frag.replace(/^subj[_-]/i, "");
     frag = frag.replace(/_/g, " ");
     frag = frag.replace(/\s+/g, " ").trim();
@@ -141,8 +206,7 @@ function shortLabel(v) {
 
     return frag || v;
   }
-
-  return v.length > 80 ? v.slice(0, 77) + "…" : v;
+  return v.length > 120 ? v.slice(0, 117) + "…" : v;
 }
 
 function ensureNode(id, label, classes, extra={}) {
@@ -161,7 +225,6 @@ async function sparql(query) {
   const url = ENDPOINT + "?query=" + encodeURIComponent(query);
   const resp = await fetch(url, { headers: { "Accept": "application/sparql-results+json" } });
   const text = await resp.text();
-
   if (!resp.ok) {
     console.error("HTTP", resp.status, text);
     throw new Error(`HTTP ${resp.status}. See console.`);
@@ -174,9 +237,8 @@ async function sparql(query) {
 }
 
 /**
- * Predicates (guesses) — adjust if you later want precision.
- * You observed "prop:title" in results, so we include that IRI first.
- * (Assumption: prop: = http://example.org/property/)
+ * Predicates (guesses) used for searching / titles.
+ * If your dataset uses different IRIs, it still works with "Any field".
  */
 const TITLE_PREDICATES = [
   "http://example.org/property/title",
@@ -223,7 +285,6 @@ OFFSET ${offset}
 `.trim();
   }
 
-  // any field
   return `
 SELECT DISTINCT ?book ?label
 WHERE {
@@ -247,8 +308,7 @@ LIMIT ${limit}
 `.trim();
 }
 
-function booksByExactSubjectValueQuery(subjectValue, limit=25) {
-  // subjectValue may be a URI or a literal; we match via string contains to be resilient
+function booksBySubjectValueQuery(subjectValue, limit=25) {
   const t = esc(subjectValue);
   return `
 SELECT DISTINCT ?book ?title
@@ -267,27 +327,129 @@ LIMIT ${limit}
 `.trim();
 }
 
-// App state
+/** Fetch ALL data for a book: <book> ?p ?o */
+function allDataForBookQuery(bookIri, limit=500) {
+  return `
+SELECT ?p ?o
+WHERE {
+  <${bookIri}> ?p ?o .
+}
+ORDER BY STR(?p) STR(?o)
+LIMIT ${limit}
+`.trim();
+}
+
+// --------------------
+// Details panel rendering
+// --------------------
+function renderBookDetails({ iri, label, triples, subjects }) {
+  const subjectChips = (subjects || []).map(s => {
+    const display = shortLabel(s);
+    const safe = s.replace(/"/g, '&quot;');
+    return `<span class="badge" data-action="subject" data-value="${safe}">${display}</span>`;
+  }).join("");
+
+  // Group predicate -> values
+  const map = new Map();
+  for (const { p, o, oType } of triples) {
+    const key = p;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push({ o, oType });
+  }
+
+  // Turn into rows
+  const rowsHtml = Array.from(map.entries()).map(([p, values]) => {
+    const pk = shortLabel(p);
+    const vals = values.map(v => {
+      if (v.oType === "uri") {
+        const disp = shortLabel(v.o);
+        // clicking URI in panel selects node if exists; otherwise tries to pivot search
+        return `<a href="#" data-action="uri" data-value="${v.o.replace(/"/g, '&quot;')}">${disp}</a>`;
+      } else {
+        return shortLabel(v.o);
+      }
+    }).join("<br/>");
+    return `<div class="k">${pk}</div><div class="v">${vals}</div>`;
+  }).join("");
+
+  panelEl.innerHTML = `
+    <div class="card">
+      <h2>${label}</h2>
+      <div class="sub">${iri}</div>
+
+      <div class="actions">
+        ${subjects && subjects.length ? `<span class="hint"><b>Subjects:</b></span>${subjectChips}` : `<span class="hint">No subjects found for this record.</span>`}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="hint" style="margin-bottom:10px;">
+        <b>All fields</b> (showing ${triples.length} triple(s))
+      </div>
+      <div class="kv">
+        ${rowsHtml || `<div class="hint">No data found for this record.</div>`}
+      </div>
+    </div>
+  `;
+
+  // Wire panel clicks
+  panelEl.querySelectorAll('[data-action="subject"]').forEach(el => {
+    el.addEventListener("click", async () => {
+      const val = el.getAttribute("data-value");
+      await expandSubject(val);
+    });
+  });
+
+  panelEl.querySelectorAll('[data-action="uri"]').forEach(el => {
+    el.addEventListener("click", (e) => {
+      e.preventDefault();
+      const uri = el.getAttribute("data-value");
+      selectOrAddUri(uri);
+    });
+  });
+}
+
+function selectOrAddUri(uri) {
+  // If it's already a node, select and center it
+  const existing = cy.getElementById(uri);
+  if (!existing.empty()) {
+    cy.elements().unselect();
+    existing.select();
+    cy.animate({ center: { eles: existing }, duration: 250 });
+    status(`Selected: ${existing.data("label")}`);
+    return;
+  }
+
+  // If not, add a node (so the panel link feels useful)
+  ensureNode(uri, shortLabel(uri), "subject", { kind: "subject", subjectValue: uri });
+  relayout();
+  status("Added node from details panel.");
+}
+
+// --------------------
+// App state + search
+// --------------------
 let currentTermNodeId = null;
-let currentSearch = null;
 let currentOffset = 0;
 const PAGE_SIZE = 25;
 
 async function runSearch(reset=true) {
   const term = qEl.value.trim();
   const field = fieldEl.value;
-
   if (!term) { status("Type a search term."); return; }
 
   if (reset) {
     cy.elements().remove();
-    setDetails("");
-    currentSearch = { term, field };
     currentOffset = 0;
     currentTermNodeId = `term:${field}:${term.toLowerCase()}`;
-
     ensureNode(currentTermNodeId, term, "term", { kind: "term", term, field });
 
+    panelEl.innerHTML = `
+      <div class="card">
+        <h2>Book details</h2>
+        <div class="sub">Click a book node to see all associated data here.</div>
+      </div>
+    `;
     status(`Searching ${field} for "${term}"…`);
   }
 
@@ -300,7 +462,6 @@ async function runSearch(reset=true) {
     return;
   }
 
-  let added = 0;
   for (const row of rows) {
     const book = row.book?.value;
     const label = row.label?.value;
@@ -308,15 +469,11 @@ async function runSearch(reset=true) {
 
     ensureNode(book, shortLabel(label || book), "book", { kind: "book", iri: book });
     ensureEdge(`${currentTermNodeId}|matches|${book}`, currentTermNodeId, book, "matches");
-    added++;
   }
 
   currentOffset += PAGE_SIZE;
   relayout();
-
-  const bookCount = cy.nodes(".book").length;
-  status(`Loaded ${bookCount} result book(s) for "${term}". Click a book to reveal its subjects.`);
-  setDetails(`<b>Search:</b> ${term} <span class="muted">(field: ${field}, showing ${bookCount} books)</span>`);
+  status(`Loaded ${cy.nodes(".book").length} result book(s). Click a book to reveal subjects + details.`);
 }
 
 document.getElementById("searchBtn").addEventListener("click", () => runSearch(true));
@@ -325,91 +482,142 @@ qEl.addEventListener("keydown", (e) => { if (e.key === "Enter") runSearch(true);
 document.getElementById("clearBtn").addEventListener("click", () => {
   cy.elements().remove();
   currentTermNodeId = null;
-  currentSearch = null;
   currentOffset = 0;
-  setDetails("");
+  panelEl.innerHTML = `
+    <div class="card">
+      <h2>Book details</h2>
+      <div class="sub">Click a book node to see all associated data here.</div>
+    </div>
+  `;
   status("Cleared.");
 });
 
 document.getElementById("fitBtn").addEventListener("click", () => cy.fit());
 
-// Clicking a book adds subject nodes (only then)
+// --------------------
+// Click behaviors
+// --------------------
+async function expandSubject(subjectValue) {
+  const subjLabel = shortLabel(subjectValue);
+  status(`Loading more books in subject "${subjLabel}"…`);
+
+  const json = await sparql(booksBySubjectValueQuery(subjectValue, 25));
+  const rows = json?.results?.bindings || [];
+
+  const subjId = "subject:" + subjectValue.toLowerCase();
+  ensureNode(subjId, subjLabel, "subject", { kind: "subject", subjectValue });
+
+  let added = 0;
+  for (const row of rows) {
+    const book = row.book?.value;
+    const title = row.title?.value;
+    if (!book) continue;
+
+    ensureNode(book, shortLabel(title || book), "book", { kind: "book", iri: book });
+    ensureEdge(`${subjId}|hasBook|${book}`, subjId, book, "has book");
+    added++;
+  }
+
+  relayout();
+  status(added ? `Added ${added} book(s) for subject "${subjLabel}".` : `No additional books found for subject "${subjLabel}".`);
+}
+
+async function loadBookDetails(bookIri, bookLabel) {
+  status("Loading full record…");
+
+  // 1) fetch all triples
+  const allJson = await sparql(allDataForBookQuery(bookIri, 500));
+  const rows = allJson?.results?.bindings || [];
+  const triples = rows.map(r => ({
+    p: r.p?.value,
+    o: r.o?.value,
+    oType: r.o?.type || (r.o?.value?.startsWith("http") ? "uri" : "literal")
+  })).filter(x => x.p && x.o);
+
+  // 2) fetch subjects (for chips)
+  let subjects = [];
+  try {
+    const subjJson = await sparql(subjectsForBookQuery(bookIri, 50));
+    const subjRows = subjJson?.results?.bindings || [];
+    subjects = subjRows.map(r => r.subj?.value).filter(Boolean);
+  } catch (e) {
+    // ok if subject predicates are different; panel still shows all fields
+    console.warn("Subjects query failed:", e);
+  }
+
+  renderBookDetails({
+    iri: bookIri,
+    label: bookLabel || shortLabel(bookIri),
+    triples,
+    subjects
+  });
+
+  status("Record loaded.");
+}
+
+// Clicking a BOOK: add subjects to graph + load details
 cy.on("tap", "node", async (evt) => {
   const node = evt.target;
   const kind = node.data("kind");
-
   if (kind !== "book") return;
 
   const bookIri = node.data("iri") || node.id();
   const bookLabel = node.data("label") || shortLabel(bookIri);
 
+  cy.elements().unselect();
   node.select();
-  setDetails(`<b>Selected book:</b> ${bookLabel}<br/><span class="muted">${bookIri}</span>`);
-  status("Loading subjects for that book…");
 
+  // Show immediate panel header while fetching
+  panelEl.innerHTML = `
+    <div class="card">
+      <h2>${bookLabel}</h2>
+      <div class="sub">${bookIri}</div>
+      <div class="hint">Loading full record…</div>
+    </div>
+  `;
+
+  // Add subject nodes/edges to graph (discovery)
   try {
     const subjJson = await sparql(subjectsForBookQuery(bookIri, 30));
     const subjRows = subjJson?.results?.bindings || [];
-
-    if (!subjRows.length) {
-      status("That book has no subject values (or subject predicate differs).");
-      setDetails(`<b>Selected book:</b> ${bookLabel}<br/><span class="muted">No subjects found for this record.</span>`);
-      return;
-    }
-
-    let addedSubjects = 0;
     for (const r of subjRows) {
       const subjVal = r.subj?.value;
       if (!subjVal) continue;
-
       const subjId = "subject:" + subjVal.toLowerCase();
       ensureNode(subjId, shortLabel(subjVal), "subject", { kind: "subject", subjectValue: subjVal });
       ensureEdge(`${bookIri}|subject|${subjId}`, bookIri, subjId, "subject");
-      addedSubjects++;
     }
-
-    relayout();
-    status(`Added ${addedSubjects} subject node(s). Click a subject to load more books in that subject.`);
-    setDetails(`<b>Selected book:</b> ${bookLabel}<br/><b>Subjects loaded:</b> ${addedSubjects}`);
   } catch (e) {
+    console.warn("Subject expansion failed:", e);
+  }
+
+  relayout();
+
+  // Load full record details (panel)
+  try {
+    await loadBookDetails(bookIri, bookLabel);
+  } catch (e) {
+    panelEl.innerHTML = `
+      <div class="card">
+        <h2>${bookLabel}</h2>
+        <div class="sub">${bookIri}</div>
+        <div class="hint">Could not load full record. Open DevTools → Console for details.</div>
+      </div>
+    `;
     status(e.message);
   }
 });
 
-// Clicking a subject loads more books in same subject
+// Clicking a SUBJECT node: load more books in that subject
 cy.on("tap", "node.subject", async (evt) => {
   const subjVal = evt.target.data("subjectValue");
-  const subjLabel = evt.target.data("label") || shortLabel(subjVal);
-
   if (!subjVal) return;
-
+  cy.elements().unselect();
   evt.target.select();
-  status(`Finding more books in subject "${subjLabel}"…`);
-  setDetails(`<b>Subject:</b> ${subjLabel}<br/><span class="muted">${subjVal}</span>`);
-
-  try {
-    const json = await sparql(booksByExactSubjectValueQuery(subjVal, 25));
-    const rows = json?.results?.bindings || [];
-
-    let added = 0;
-    for (const row of rows) {
-      const book = row.book?.value;
-      const title = row.title?.value;
-      if (!book) continue;
-
-      ensureNode(book, shortLabel(title || book), "book", { kind: "book", iri: book });
-      ensureEdge(`${evt.target.id()}|hasBook|${book}`, evt.target.id(), book, "has book");
-      added++;
-    }
-
-    relayout();
-    status(added ? `Added ${added} book(s) for subject "${subjLabel}".` : `No additional books found for subject "${subjLabel}".`);
-  } catch (e) {
-    status(e.message);
-  }
+  await expandSubject(subjVal);
 });
 
-status('Type a search term (e.g. "psychology"). Default is Title. Click a book to reveal subjects.');
+status('Type a search term (e.g. "psychology"). Default is Title. Click a book for full details.');
 </script>
 </body>
 </html>
