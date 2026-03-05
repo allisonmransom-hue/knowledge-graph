@@ -1,875 +1,534 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Knowledge Graph Explorer</title>
-
-  <!-- Cytoscape -->
-  <script src="https://unpkg.com/cytoscape@3.29.2/dist/cytoscape.min.js"></script>
+  <meta charset="UTF-8" />
+  <title>Weeded Library Data Knowledge Graph Explorer</title>
+  <script src="https://unpkg.com/cytoscape@3.26.0/dist/cytoscape.min.js"></script>
 
   <style>
-    :root{
-      --bg:#0b1020;
-      --panel:#111a33;
-      --panel2:#0f1730;
-      --text:#e9eefc;
-      --muted:#a9b6da;
-      --border:rgba(255,255,255,0.12);
-      --accent:#7aa2ff;
-      --bad:#ff6b6b;
-      --good:#49d39f;
-      --shadow:0 10px 30px rgba(0,0,0,.35);
-      --radius:16px;
-      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
-    }
+    body { font-family: Arial, sans-serif; margin: 0; background: #ffffff; }
 
-    body{
-      margin:0;
-      font-family: var(--sans);
-      background: radial-gradient(1200px 800px at 20% 10%, rgba(122,162,255,.18), transparent 60%),
-                  radial-gradient(900px 600px at 90% 30%, rgba(73,211,159,.14), transparent 55%),
-                  var(--bg);
-      color:var(--text);
+    #header {
+      padding: 20px;
+      background: #f4f6fb;
+      border-bottom: 1px solid #d6dbe8;
     }
+    #header h2 { margin: 0; }
+    #header p { max-width: 980px; line-height: 1.45; margin: 8px 0 0 0; }
 
-    header{
-      padding: 22px 22px 14px;
-      display:flex;
-      gap:14px;
-      align-items:baseline;
-      justify-content:space-between;
-    }
-    header h1{
-      margin:0;
-      font-size: 18px;
-      letter-spacing: .2px;
-    }
-    header .sub{
-      color: var(--muted);
-      font-size: 13px;
-    }
-
-    .app{
-      display:grid;
-      grid-template-columns: 1.2fr 0.8fr;
-      gap: 14px;
-      padding: 0 14px 14px;
-      height: calc(100vh - 70px);
-      box-sizing:border-box;
-    }
-
-    .card{
-      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      overflow:hidden;
-      display:flex;
-      flex-direction:column;
-      min-height: 0;
-    }
-
-    .controls{
-      padding: 12px;
-      background: rgba(0,0,0,.18);
-      border-bottom: 1px solid var(--border);
-      display:grid;
-      grid-template-columns: 1.2fr 1fr 1fr;
-      gap: 10px;
-      align-items:end;
-    }
-
-    label{
-      display:block;
-      font-size: 12px;
-      color: var(--muted);
-      margin-bottom: 6px;
-    }
-    input[type="text"], select, input[type="number"]{
-      width:100%;
-      box-sizing:border-box;
-      border-radius: 12px;
-      border:1px solid var(--border);
-      background: rgba(10,16,35,.6);
-      color: var(--text);
-      padding: 10px 10px;
-      outline:none;
-    }
-    input[type="number"]{
-      padding-right: 8px;
-    }
-
-    .btnrow{
-      display:flex;
-      gap:8px;
-      flex-wrap:wrap;
-      padding-top: 4px;
-    }
-    button{
-      border-radius: 12px;
-      border:1px solid var(--border);
-      background: rgba(122,162,255,.14);
-      color: var(--text);
-      padding: 9px 10px;
-      cursor:pointer;
-      font-size: 13px;
-    }
-    button.secondary{ background: rgba(255,255,255,.06); }
-    button.danger{ background: rgba(255,107,107,.12); }
-    button:disabled{
-      opacity:.55;
-      cursor:not-allowed;
-    }
-
-    #cy{
-      flex:1;
-      min-height:0;
-    }
-
-    .statusbar{
-      padding: 10px 12px;
-      border-top: 1px solid var(--border);
-      display:flex;
-      justify-content:space-between;
-      gap: 10px;
-      font-size: 12px;
-      color: var(--muted);
-      background: rgba(0,0,0,.18);
-    }
-    .pill{
-      padding: 3px 8px;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--muted);
-      background: rgba(255,255,255,.05);
-      white-space:nowrap;
-    }
-
-    .side{
-      padding: 12px;
-      gap: 12px;
-    }
-    .side h2{
-      margin:0;
-      font-size: 14px;
-      letter-spacing:.2px;
-    }
-    .side .hint{
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.4;
-    }
-
-    .kv{
-      margin-top: 10px;
-      display:grid;
+    #controls {
+      padding: 12px 15px;
+      border-bottom: 1px solid #ddd;
+      display: flex;
       gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
     }
-    .kv .row{
-      border:1px solid var(--border);
-      border-radius: 12px;
-      padding: 10px;
-      background: rgba(0,0,0,.16);
-    }
-    .k{
-      font-size: 11px;
-      color: var(--muted);
-      margin-bottom: 4px;
-      font-family: var(--mono);
-      word-break: break-word;
-    }
-    .v{
-      font-size: 13px;
-      color: var(--text);
-      word-break: break-word;
-      line-height: 1.35;
-    }
-    .v a{ color: var(--accent); }
-    .mono{
-      font-family: var(--mono);
-      font-size: 12px;
-      color: var(--muted);
-      word-break: break-word;
-    }
+    #searchBox { padding: 8px; font-size: 14px; width: 320px; }
+    button { padding: 8px 12px; font-size: 14px; cursor: pointer; }
 
-    .msg{
-      padding: 10px 12px;
-      border-radius: 12px;
-      border:1px solid var(--border);
-      background: rgba(255,255,255,.05);
-      font-size: 12px;
-      color: var(--muted);
-      margin-top: 10px;
-      white-space: pre-wrap;
+    /* Graph + details side-by-side */
+    #main {
+      display: flex;
+      height: 75vh;
+      width: 100%;
     }
-    .msg.bad{ border-color: rgba(255,107,107,.35); background: rgba(255,107,107,.08); color:#ffd0d0; }
-    .msg.good{ border-color: rgba(73,211,159,.35); background: rgba(73,211,159,.08); color:#c9ffe9; }
-
-    @media (max-width: 980px){
-      .app{ grid-template-columns: 1fr; height: auto; }
-      .card{ min-height: 520px; }
+    #cy { flex: 3; min-width: 0; }
+    #details {
+      flex: 1;
+      min-width: 260px;
+      border-left: 1px solid #ddd;
+      padding: 15px;
+      font-size: 14px;
+      overflow: auto;
+      background: #fafafa;
+    }
+    #details h3 { margin: 0 0 8px 0; font-size: 14px; }
+    .detail-label { font-weight: bold; margin-top: 10px; }
+    .detail-value { margin-top: 4px; }
+    .muted { color: #666; font-size: 12px; line-height: 1.35; }
+    .pill {
+      display: inline-block;
+      font-size: 12px;
+      padding: 3px 8px;
+      border: 1px solid #ddd;
+      border-radius: 999px;
+      background: #fff;
+      color: #555;
     }
   </style>
 </head>
 
 <body>
-  <header>
-    <div>
-      <h1>Knowledge Graph Explorer</h1>
-      <div class="sub">Search your weeded-records RDF via TriplyDB SPARQL and explore relationships interactively.</div>
-    </div>
-    <div class="pill" id="endpointPill">endpoint: (set me)</div>
-  </header>
-
-  <div class="app">
-    <!-- LEFT: Graph -->
-    <section class="card">
-      <div class="controls">
-        <div>
-          <label for="q">Search</label>
-          <input id="q" type="text" placeholder='Try: psychology, "David Smith", Kingsborough...' />
-          <div class="btnrow">
-            <button id="runBtn">Search</button>
-            <button id="clearBtn" class="secondary">Clear</button>
-          </div>
-        </div>
-
-        <div>
-          <label for="field">Search in field</label>
-          <select id="field">
-            <option value="any">Any field</option>
-            <option value="title">Title</option>
-            <option value="subject">Subject</option>
-            <option value="location">Location</option>
-            <option value="author">Author</option>
-            <option value="callnumber">Call number</option>
-          </select>
-
-          <div class="btnrow">
-            <button id="layoutBtn" class="secondary">Layout: cose</button>
-            <button id="fitBtn" class="secondary">Fit</button>
-          </div>
-        </div>
-
-        <div>
-          <label>Result size</label>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <div>
-              <label for="limit" style="margin-bottom:6px;">Limit</label>
-              <input id="limit" type="number" min="10" max="1000" step="10" value="200" />
-            </div>
-            <div>
-              <label for="depth" style="margin-bottom:6px;">Expand depth</label>
-              <input id="depth" type="number" min="0" max="2" step="1" value="1" />
-            </div>
-          </div>
-
-          <div class="btnrow">
-            <button id="exportBtn" class="secondary">Export PNG</button>
-            <button id="resetStyleBtn" class="secondary">Reset style</button>
-          </div>
-        </div>
-      </div>
-
-      <div id="cy"></div>
-
-      <div class="statusbar">
-        <div id="statusLeft">Ready.</div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <span class="pill" id="nodePill">nodes: 0</span>
-          <span class="pill" id="edgePill">edges: 0</span>
-          <span class="pill" id="timePill">ms: —</span>
-        </div>
-      </div>
-    </section>
-
-    <!-- RIGHT: Details panel -->
-    <aside class="card side">
-      <div>
-        <h2>Details</h2>
-        <div class="hint">
-          Click a node to see all metadata we retrieved for it, plus its URI.
-          Tip: after searching, click the “book/title” node to view fields like subject, location, call number, etc.
-        </div>
-      </div>
-
-      <div id="detailsEmpty" class="msg">No selection yet. Click a node in the graph.</div>
-      <div id="details" style="display:none;">
-        <div class="mono" id="detailsUri"></div>
-        <div class="kv" id="detailsKv"></div>
-      </div>
-
-      <div id="message" class="msg" style="display:none;"></div>
-    </aside>
+  <div id="header">
+    <h2>Weeded Library Data Knowledge Graph Explorer</h2>
+    <p>
+      This interactive visualization represents withdrawn print book data from Hunter College Libraries as a knowledge graph.
+      Search for titles, subjects, locations, authors, and more. Results are retrieved from RDF stored in TriplyDB via a SPARQL
+      endpoint and rendered as an interactive network.
+    </p>
   </div>
 
-<script>
-/**
- * =========================
- * 1) SET YOUR ENDPOINT HERE
- * =========================
- */
-const SPARQL_ENDPOINT = "https://api.triplydb.com/datasets/Allisonmransom/deleted-records-knowledge-graph/sparql";
+  <div id="controls">
+    <!-- Autocomplete -->
+    <input id="searchBox" list="suggestions" placeholder="Search titles, subjects, locations, authors…" />
+    <datalist id="suggestions"></datalist>
 
-/**
- * ============================================
- * 2) OPTIONAL: MAP YOUR PREDICATES TO LABELS
- *    (Edit these to match your actual RDF)
- * ============================================
- * If your TTL uses http://example.org/property/book etc, update these keys.
- * The script will still work without perfect labels — this just makes Details readable.
- */
-const PREDICATE_LABELS = {
-  // Example predicates (replace with your real ones)
-  "http://example.org/property/book": "Title",
-  "http://example.org/property/title": "Title",
-  "http://example.org/property/subject": "Subject",
-  "http://example.org/property/location": "Location",
-  "http://example.org/property/author": "Author",
-  "http://example.org/property/callNumber": "Call number",
-  "http://example.org/property/callnumber": "Call number",
-  "http://purl.org/dc/terms/title": "Title",
-  "http://purl.org/dc/terms/creator": "Creator",
-  "http://purl.org/dc/terms/subject": "Subject"
-};
+    <button onclick="runSearch()">Search</button>
+    <button onclick="resetGraph()">Reset</button>
 
-/**
- * ============================================
- * 3) OPTIONAL: DEFINE WHICH PREDICATES MATCH
- *    "Title / Subject / Location / Author / Call number"
- * ============================================
- * If you don’t know them yet, keep as-is and just use "Any field".
- */
-const FIELD_PREDICATES = {
-  any: [],
-  title: [
-    "http://example.org/property/book",
-    "http://example.org/property/title",
-    "http://purl.org/dc/terms/title"
-  ],
-  subject: [
-    "http://example.org/property/subject",
-    "http://purl.org/dc/terms/subject"
-  ],
-  location: [
-    "http://example.org/property/location"
-  ],
-  author: [
-    "http://example.org/property/author",
-    "http://purl.org/dc/terms/creator"
-  ],
-  callnumber: [
-    "http://example.org/property/callNumber",
-    "http://example.org/property/callnumber"
-  ]
-};
+    <span class="pill" id="statusPill">Ready</span>
+  </div>
 
-// UI refs
-const qEl = document.getElementById("q");
-const fieldEl = document.getElementById("field");
-const limitEl = document.getElementById("limit");
-const depthEl = document.getElementById("depth");
+  <div id="main">
+    <div id="cy"></div>
 
-const runBtn = document.getElementById("runBtn");
-const clearBtn = document.getElementById("clearBtn");
-const fitBtn = document.getElementById("fitBtn");
-const layoutBtn = document.getElementById("layoutBtn");
-const exportBtn = document.getElementById("exportBtn");
-const resetStyleBtn = document.getElementById("resetStyleBtn");
+    <div id="details">
+      <h3>Details</h3>
+      <div class="muted">
+        Click a <b>book title</b> node to see Title, Subject, Location, Author, and Call Number here.
+      </div>
+      <div id="detailsContent" style="margin-top: 12px;">
+        <span class="muted">No selection yet.</span>
+      </div>
+    </div>
+  </div>
 
-const statusLeft = document.getElementById("statusLeft");
-const nodePill = document.getElementById("nodePill");
-const edgePill = document.getElementById("edgePill");
-const timePill = document.getElementById("timePill");
-const endpointPill = document.getElementById("endpointPill");
+  <script>
+    /**
+     * =========================
+     * CONFIG
+     * =========================
+     */
+    const endpoint = "https://api.triplydb.com/datasets/Allisonmransom/deleted-records-knowledge-graph/sparql";
 
-const detailsEmpty = document.getElementById("detailsEmpty");
-const detailsWrap = document.getElementById("details");
-const detailsUri = document.getElementById("detailsUri");
-const detailsKv = document.getElementById("detailsKv");
-const message = document.getElementById("message");
+    // These are the *predicate local-names* this file treats as your core bibliographic fields.
+    // If your TTL uses different endings, add them here (case-insensitive match).
+    const FIELD_NAMES = {
+      title: ["book", "title"],
+      subject: ["subject"],
+      location: ["location"],
+      author: ["author", "creator"],
+      callNumber: ["callnumber", "callNumber"]
+    };
 
-endpointPill.textContent = "endpoint: " + SPARQL_ENDPOINT;
+    // Autocomplete pulls literals for these predicates (by local-name match).
+    const AUTOCOMPLETE_FIELDS = [
+      ...FIELD_NAMES.title,
+      ...FIELD_NAMES.subject,
+      ...FIELD_NAMES.location,
+      ...FIELD_NAMES.author
+      // (call numbers can be noisy; add if you want)
+      // ...FIELD_NAMES.callNumber
+    ];
 
-// Graph init
-let cy = cytoscape({
-  container: document.getElementById("cy"),
-  elements: [],
-  style: [
-    {
-      selector: "node",
-      style: {
-        "background-color": "rgba(122,162,255,.75)",
-        "label": "data(label)",
-        "color": "#e9eefc",
-        "text-wrap": "wrap",
-        "text-max-width": 140,
-        "text-valign": "center",
-        "text-halign": "center",
-        "font-size": 10,
-        "width": "mapData(size, 1, 10, 26, 52)",
-        "height": "mapData(size, 1, 10, 26, 52)",
-        "border-width": 1,
-        "border-color": "rgba(255,255,255,.25)"
-      }
-    },
-    {
-      selector: "edge",
-      style: {
-        "curve-style": "bezier",
-        "line-color": "rgba(255,255,255,.28)",
-        "target-arrow-color": "rgba(255,255,255,.28)",
-        "target-arrow-shape": "triangle",
-        "label": "data(label)",
-        "font-size": 9,
-        "text-wrap": "wrap",
-        "text-max-width": 120,
-        "text-rotation": "autorotate",
-        "text-background-color": "rgba(10,16,35,.85)",
-        "text-background-opacity": 1,
-        "text-background-padding": 2,
-        "text-background-shape": "round-rectangle",
-        "color": "rgba(233,238,252,.95)"
-      }
-    },
-    { selector: ".selected", style: { "border-width": 3, "border-color": "rgba(73,211,159,.9)" } },
-    { selector: ".dim", style: { "opacity": 0.18 } },
-    { selector: ".focus", style: { "opacity": 1 } }
-  ],
-  layout: { name: "cose", animate: true, animationDuration: 600 }
-});
-
-let currentLayout = "cose";
-const layouts = ["cose", "breadthfirst", "cola", "circle", "concentric"];
-
-// If cola isn't available, Cytoscape will fallback. That's okay.
-
-// Utility
-function escapeForRegexLike(str){
-  // for FILTER(CONTAINS(LCASE(STR(?o)), "q"))
-  return str.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-function shortLabelFromURI(uri){
-  try{
-    const u = uri.toString();
-    const hash = u.lastIndexOf("#");
-    const slash = u.lastIndexOf("/");
-    const i = Math.max(hash, slash);
-    return i >= 0 ? u.slice(i+1) : u;
-  }catch{
-    return String(uri);
-  }
-}
-
-function predicateLabel(p){
-  return PREDICATE_LABELS[p] || shortLabelFromURI(p);
-}
-
-function setMessage(text, kind=""){
-  if(!text){
-    message.style.display = "none";
-    message.textContent = "";
-    message.className = "msg";
-    return;
-  }
-  message.style.display = "block";
-  message.textContent = text;
-  message.className = "msg" + (kind ? " " + kind : "");
-}
-
-function setStatus(text){
-  statusLeft.textContent = text;
-}
-
-function updateCounts(){
-  nodePill.textContent = "nodes: " + cy.nodes().length;
-  edgePill.textContent = "edges: " + cy.edges().length;
-}
-
-function applyLayout(name){
-  currentLayout = name;
-  layoutBtn.textContent = "Layout: " + name;
-  cy.layout({ name, animate: true, animationDuration: 700 }).run();
-}
-
-function clearDetails(){
-  detailsWrap.style.display = "none";
-  detailsEmpty.style.display = "block";
-  detailsUri.textContent = "";
-  detailsKv.innerHTML = "";
-}
-
-// Core SPARQL fetch
-async function sparqlSelect(query){
-  const url = SPARQL_ENDPOINT;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/sparql-query",
-      "Accept": "application/sparql-results+json"
-    },
-    body: query
-  });
-
-  if(!res.ok){
-    const txt = await res.text().catch(()=> "");
-    throw new Error(`SPARQL HTTP ${res.status}: ${txt.slice(0, 250)}`);
-  }
-  return res.json();
-}
-
-/**
- * Strategy:
- * - Find matching triples where object contains the search string (or within selected predicate fields)
- * - Build a seed set of resources (subjects) from those matches
- * - Optionally expand outward depth 1–2 (get all predicate/object for seeds, and optionally for neighbors)
- * - Build Cytoscape nodes/edges
- *
- * This is intentionally generic so it works with “row nodes” or “book nodes”.
- */
-async function runSearch(){
-  setMessage("");
-  const raw = qEl.value.trim();
-  if(!raw){
-    setMessage("Type a search term first.", "bad");
-    return;
-  }
-
-  const q = escapeForRegexLike(raw.toLowerCase());
-  const limit = Math.max(10, Math.min(1000, Number(limitEl.value || 200)));
-  const depth = Math.max(0, Math.min(2, Number(depthEl.value || 1)));
-  const field = fieldEl.value;
-
-  runBtn.disabled = true;
-  setStatus("Searching…");
-  const t0 = performance.now();
-
-  try{
-    // Build predicate filter if user chose a field
-    const preds = FIELD_PREDICATES[field] || [];
-    const predFilter = preds.length
-      ? `FILTER( ?p IN (${preds.map(p => `<${p}>`).join(", ")}) )`
-      : "";
-
-    // 1) Seed: find subjects with matching literal objects
-    // NOTE: This assumes text appears in object literals; that's common for titles/subjects/locations.
-    const seedQuery = `
-      SELECT DISTINCT ?s WHERE {
-        ?s ?p ?o .
-        ${predFilter}
-        FILTER(isLiteral(?o))
-        FILTER(CONTAINS(LCASE(STR(?o)), "${q}"))
-      }
-      LIMIT ${limit}
-    `;
-
-    const seedJson = await sparqlSelect(seedQuery);
-    const seeds = seedJson.results.bindings.map(b => b.s.value);
-
-    if(seeds.length === 0){
-      cy.elements().remove();
-      updateCounts();
-      clearDetails();
-      setStatus("No matches.");
-      timePill.textContent = "ms: " + Math.round(performance.now()-t0);
-      setMessage("No results. Try a broader term, or set “Search in field” to “Any field”.", "bad");
-      return;
-    }
-
-    // Helper to make VALUES list chunks (avoid huge query bodies)
-    function valuesChunk(varName, uris, chunkSize=80){
-      const chunks = [];
-      for(let i=0;i<uris.length;i+=chunkSize){
-        const part = uris.slice(i,i+chunkSize).map(u => `<${u}>`).join(" ");
-        chunks.push(`VALUES ?${varName} { ${part} }`);
-      }
-      return chunks;
-    }
-
-    // 2) Get triples for seeds
-    // We fetch all outgoing triples for each seed (s p o)
-    const triples = [];
-    for(const v of valuesChunk("s", seeds)){
-      const q1 = `
-        SELECT ?s ?p ?o WHERE {
-          ${v}
-          ?s ?p ?o .
-        }
-        LIMIT ${limit * 10}
-      `;
-      const j1 = await sparqlSelect(q1);
-      for(const b of j1.results.bindings){
-        triples.push({
-          s: b.s.value,
-          p: b.p.value,
-          o: b.o.type === "uri" ? b.o.value : b.o.value,
-          oType: b.o.type
-        });
-      }
-    }
-
-    // 3) Expand depth: if depth >= 1, pull outgoing triples for neighbor URIs
-    // We'll collect neighbor URIs from objects that are URIs.
-    let neighbors = [];
-    if(depth >= 1){
-      const neighborSet = new Set();
-      for(const t of triples){
-        if(t.oType === "uri") neighborSet.add(t.o);
-      }
-      neighbors = Array.from(neighborSet).slice(0, 400); // safety cap
-
-      for(const v of valuesChunk("s", neighbors)){
-        const q2 = `
-          SELECT ?s ?p ?o WHERE {
-            ${v}
-            ?s ?p ?o .
+    /**
+     * =========================
+     * Cytoscape init
+     * =========================
+     */
+    let cy = cytoscape({
+      container: document.getElementById("cy"),
+      elements: [],
+      style: [
+        {
+          selector: "node",
+          style: {
+            "label": "data(label)",
+            "background-color": "#4a7bd0",
+            "color": "#ffffff",
+            "text-valign": "center",
+            "text-halign": "center",
+            "text-wrap": "wrap",
+            "text-max-width": "140px",
+            "width": "mapData(size, 1, 10, 24, 70)",
+            "height": "mapData(size, 1, 10, 24, 70)",
+            "font-size": 12
           }
-          LIMIT ${limit * 10}
-        `;
-        const j2 = await sparqlSelect(q2);
-        for(const b of j2.results.bindings){
-          triples.push({
-            s: b.s.value,
-            p: b.p.value,
-            o: b.o.type === "uri" ? b.o.value : b.o.value,
-            oType: b.o.type
-          });
+        },
+        {
+          selector: "edge",
+          style: {
+            "label": "data(label)",
+            "curve-style": "bezier",
+            "target-arrow-shape": "triangle",
+            "line-color": "#888",
+            "target-arrow-color": "#888",
+            "font-size": 9,
+            "text-rotation": "autorotate"
+          }
+        },
+        {
+          selector: ".highlighted",
+          style: {
+            "background-color": "#ffcc00",
+            "line-color": "#ffcc00",
+            "target-arrow-color": "#ffcc00",
+            "transition-property": "background-color, line-color, target-arrow-color",
+            "transition-duration": "0.3s"
+          }
+        },
+        {
+          selector: ".faded",
+          style: {
+            "opacity": 0.15,
+            "text-opacity": 0.1
+          }
         }
+      ],
+      layout: { name: "cose" }
+    });
+
+    const statusPill = document.getElementById("statusPill");
+    const detailsContent = document.getElementById("detailsContent");
+
+    /**
+     * =========================
+     * Helpers
+     * =========================
+     */
+    function setStatus(text) {
+      statusPill.textContent = text;
+    }
+
+    function escapeForSparqlString(s) {
+      // minimal escaping for literal string injection
+      return String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    }
+
+    function localName(uri) {
+      // best-effort extraction: after last # or /
+      let u = String(uri);
+      let i = Math.max(u.lastIndexOf("#"), u.lastIndexOf("/"));
+      return i >= 0 ? u.slice(i + 1) : u;
+    }
+
+    function matchesAnyLocalName(uri, list) {
+      const ln = localName(uri).toLowerCase();
+      return list.some(x => ln === String(x).toLowerCase());
+    }
+
+    function safeId(prefix, s) {
+      // Cytoscape IDs must be unique strings; encode to avoid weird characters
+      return prefix + encodeURIComponent(String(s));
+    }
+
+    function uniq(arr) {
+      return Array.from(new Set(arr));
+    }
+
+    /**
+     * =========================
+     * Data structures
+     * =========================
+     * bookMeta[bookId] = { Title: "...", Subject: [...], Location: [...], Author: [...], "Call Number": [...] }
+     */
+    let bookMeta = {};
+
+    /**
+     * =========================
+     * SPARQL fetch
+     * =========================
+     */
+    async function sparqlSelect(query) {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/sparql-query",
+          "Accept": "application/sparql-results+json"
+        },
+        body: query
+      });
+
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(`SPARQL HTTP ${res.status}: ${txt.slice(0, 200)}`);
+      }
+      return res.json();
+    }
+
+    /**
+     * =========================
+     * Autocomplete suggestions
+     * =========================
+     * Loads distinct literal values for key predicates (title/subject/location/author).
+     */
+    async function loadSuggestions() {
+      try {
+        setStatus("Loading suggestions…");
+
+        // Regex matches predicate local name endings, e.g. /subject or #subject, case-insensitive
+        const pattern = AUTOCOMPLETE_FIELDS.map(x => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+        const sparql = `
+          SELECT DISTINCT ?value WHERE {
+            ?s ?p ?value .
+            FILTER(isLiteral(?value))
+            FILTER(REGEX(STR(?p), "(${pattern})$", "i"))
+          }
+          LIMIT 200
+        `;
+
+        const data = await sparqlSelect(sparql);
+        const list = document.getElementById("suggestions");
+        list.innerHTML = "";
+
+        data.results.bindings.forEach(row => {
+          const option = document.createElement("option");
+          option.value = row.value.value;
+          list.appendChild(option);
+        });
+
+        setStatus("Ready");
+      } catch (e) {
+        console.error(e);
+        setStatus("Ready (no suggestions)");
       }
     }
 
-    // 4) Build nodes/edges + node metadata map for details panel
-    const nodesById = new Map();
-    const metaByNode = new Map(); // id -> { uri, props: Map<label, array values> }
+    /**
+     * =========================
+     * Search + build a book-centric graph
+     * =========================
+     * Two-stage query:
+     * 1) Find matching row resources by any literal containing the search string
+     * 2) Pull ALL triples for those matching rows, so we can build:
+     *    Book title node (center) -> metadata nodes (subject/location/author/callnumber/etc.)
+     */
+    async function runSearch() {
+      const raw = document.getElementById("searchBox").value.trim();
+      if (!raw) {
+        alert("Enter a search term");
+        return;
+      }
 
-    function ensureNode(id){
-      if(nodesById.has(id)) return;
-      nodesById.set(id, {
-        data: { id, label: shortLabelFromURI(id), size: 2, uri: id }
+      resetGraph(false);
+      setStatus("Searching…");
+
+      try {
+        const q = escapeForSparqlString(raw.toLowerCase());
+
+        // Subselect grabs matching rows; outer query pulls all triples for those rows.
+        const sparql = `
+          SELECT ?row ?p ?o WHERE {
+            {
+              SELECT DISTINCT ?row WHERE {
+                ?row ?p1 ?o1 .
+                FILTER(isLiteral(?o1))
+                FILTER(CONTAINS(LCASE(STR(?o1)), "${q}"))
+              } LIMIT 50
+            }
+            ?row ?p ?o .
+          }
+          LIMIT 3000
+        `;
+
+        const data = await sparqlSelect(sparql);
+        buildBookCentricGraph(data);
+
+        setStatus(`Showing results for “${raw}”`);
+      } catch (e) {
+        console.error(e);
+        setStatus("Error");
+        alert("Error querying SPARQL endpoint. Check console for details.");
+      }
+    }
+
+    /**
+     * =========================
+     * Build book-centric graph
+     * =========================
+     * - Determine each row's title (from predicate local name "book" or "title")
+     * - Use the title literal as the central node (merged across rows with same title)
+     * - Add metadata nodes and edges
+     * - Store book metadata for details panel (Title/Subject/Location/Author/Call Number)
+     */
+    function buildBookCentricGraph(data) {
+      cy.elements().remove();
+      bookMeta = {};
+
+      const nodes = {};
+      const edges = [];
+
+      // 1) Gather titles per row
+      const rowTitle = {}; // rowURI -> titleString
+      data.results.bindings.forEach(b => {
+        const row = b.row.value;
+        const p = b.p.value;
+        const o = b.o;
+
+        if (o.type === "literal" && (matchesAnyLocalName(p, FIELD_NAMES.title))) {
+          rowTitle[row] = o.value;
+        }
       });
-      metaByNode.set(id, { uri: id, props: new Map() });
-    }
 
-    function addProp(nodeId, pred, value){
-      const meta = metaByNode.get(nodeId);
-      if(!meta) return;
-      const key = predicateLabel(pred);
-      if(!meta.props.has(key)) meta.props.set(key, []);
-      meta.props.get(key).push(value);
-    }
+      // 2) Build graph from all triples, centered on book title
+      data.results.bindings.forEach(b => {
+        const row = b.row.value;
+        const p = b.p.value;
+        const o = b.o;
 
-    const edges = [];
-    let edgeCount = 0;
+        const title = rowTitle[row];
+        if (!title) {
+          // If a row doesn't have a title triple, skip it (or you could fallback to row URI)
+          return;
+        }
 
-    for(const t of triples){
-      ensureNode(t.s);
+        const bookId = safeId("book:", title);
+        const bookLabel = title;
 
-      if(t.oType === "uri"){
-        ensureNode(t.o);
-        const eid = `e${edgeCount++}`;
+        // Create the book node (large)
+        if (!nodes[bookId]) {
+          nodes[bookId] = { data: { id: bookId, label: bookLabel, size: 10, kind: "book" } };
+
+          // Initialize details store
+          bookMeta[bookId] = {
+            "Title": title,
+            "Subject": [],
+            "Location": [],
+            "Author": [],
+            "Call Number": []
+          };
+        }
+
+        // Skip title predicate in edge creation (we already used it to identify the book)
+        if (matchesAnyLocalName(p, FIELD_NAMES.title)) {
+          return;
+        }
+
+        // Only build metadata links for literal objects (most MARC-ish exports do this)
+        // If you have URI objects you want to include, we can extend this.
+        if (o.type !== "literal") return;
+
+        const predLN = localName(p);
+        const predLabel = predLN; // edge label
+        const value = o.value;
+
+        // Create metadata node (small)
+        const metaId = safeId("meta:", predLN + "|" + value);
+        if (!nodes[metaId]) {
+          nodes[metaId] = { data: { id: metaId, label: value, size: 2, kind: "meta" } };
+        }
+
         edges.push({
           data: {
-            id: eid,
-            source: t.s,
-            target: t.o,
-            label: predicateLabel(t.p),
-            pred: t.p
+            id: safeId("e:", bookId + "|" + metaId + "|" + predLN),
+            source: bookId,
+            target: metaId,
+            label: predLabel
           }
         });
-      }else{
-        // Literal node: make a compact literal node id
-        const litId = `lit:${t.p}:${t.o}`.slice(0, 260);
-        if(!nodesById.has(litId)){
-          nodesById.set(litId, {
-            data: { id: litId, label: String(t.o), size: 1, isLiteral: true }
-          });
-        }
-        const eid = `e${edgeCount++}`;
-        edges.push({
-          data: { id: eid, source: t.s, target: litId, label: predicateLabel(t.p), pred: t.p }
-        });
+
+        // Store key fields for the details panel (case-insensitive predicate local-name match)
+        if (matchesAnyLocalName(p, FIELD_NAMES.subject)) bookMeta[bookId]["Subject"].push(value);
+        if (matchesAnyLocalName(p, FIELD_NAMES.location)) bookMeta[bookId]["Location"].push(value);
+        if (matchesAnyLocalName(p, FIELD_NAMES.author)) bookMeta[bookId]["Author"].push(value);
+        if (matchesAnyLocalName(p, FIELD_NAMES.callNumber)) bookMeta[bookId]["Call Number"].push(value);
+      });
+
+      // De-dupe details arrays
+      Object.keys(bookMeta).forEach(bookId => {
+        bookMeta[bookId]["Subject"] = uniq(bookMeta[bookId]["Subject"]);
+        bookMeta[bookId]["Location"] = uniq(bookMeta[bookId]["Location"]);
+        bookMeta[bookId]["Author"] = uniq(bookMeta[bookId]["Author"]);
+        bookMeta[bookId]["Call Number"] = uniq(bookMeta[bookId]["Call Number"]);
+      });
+
+      cy.add(Object.values(nodes));
+      cy.add(edges);
+
+      cy.layout({ name: "cose" }).run();
+
+      // Reset details prompt
+      detailsContent.innerHTML = `<span class="muted">Click a <b>book title</b> node to see metadata.</span>`;
+    }
+
+    /**
+     * =========================
+     * Reset graph
+     * =========================
+     */
+    function resetGraph(resetUI = true) {
+      cy.elements().removeClass("faded highlighted");
+      cy.elements().remove();
+      bookMeta = {};
+
+      if (resetUI) {
+        detailsContent.innerHTML = `<span class="muted">No selection yet.</span>`;
+        setStatus("Ready");
       }
-
-      // Details: store outgoing predicate/value for subject node
-      addProp(t.s, t.p, t.oType === "uri" ? t.o : t.o);
     }
 
-    // Give seed nodes more size
-    for(const s of seeds){
-      const n = nodesById.get(s);
-      if(n) n.data.size = 10;
-    }
-
-    // Literal nodes: different visual
-    cy.style()
-      .selector('node[isLiteral]')
-      .style({
-        "background-color": "rgba(255,255,255,.14)",
-        "border-color": "rgba(255,255,255,.20)",
-        "shape": "round-rectangle",
-        "text-max-width": 180,
-        "font-size": 9,
-        "width": 180,
-        "height": 34
-      })
-      .update();
-
-    // Load into Cytoscape
-    cy.elements().remove();
-    cy.add([...nodesById.values(), ...edges]);
-    updateCounts();
-    clearDetails();
-
-    // Layout + fit
-    applyLayout(currentLayout);
-    cy.fit(undefined, 30);
-
-    // Click behavior for details panel + focus
-    cy.off("tap");
-    cy.on("tap", "node", (evt) => {
+    /**
+     * =========================
+     * Click behaviors:
+     * - Highlight neighborhood (book + its metadata)
+     * - Show details panel for book nodes
+     * =========================
+     */
+    cy.on("tap", "node", function(evt) {
       const node = evt.target;
-      cy.nodes().removeClass("selected");
-      node.addClass("selected");
 
-      // focus: dim others, highlight neighborhood
+      // Highlight neighborhood and fade others
+      cy.elements().removeClass("faded highlighted");
+
       const neighborhood = node.closedNeighborhood();
-      cy.elements().addClass("dim").removeClass("focus");
-      neighborhood.removeClass("dim").addClass("focus");
+      neighborhood.addClass("highlighted");
+      cy.elements().not(neighborhood).addClass("faded");
 
-      renderDetails(node.id(), metaByNode);
+      // Details only for book nodes
+      const isBook = node.data("kind") === "book";
+      if (!isBook) {
+        detailsContent.innerHTML = `<span class="muted">Tip: click a <b>book title</b> node to see bibliographic fields.</span>`;
+        return;
+      }
+
+      const meta = bookMeta[node.id()];
+      if (!meta) {
+        detailsContent.innerHTML = `<span class="muted">No stored metadata for this book (from current results).</span>`;
+        return;
+      }
+
+      const renderList = (arr) => {
+        if (!arr || arr.length === 0) return `<div class="muted">—</div>`;
+        return arr.map(v => `<div class="detail-value">${escapeHtml(v)}</div>`).join("");
+      };
+
+      detailsContent.innerHTML = `
+        <div class="detail-label">Title</div>
+        <div class="detail-value">${escapeHtml(meta["Title"] || "—")}</div>
+
+        <div class="detail-label">Subject</div>
+        ${renderList(meta["Subject"])}
+
+        <div class="detail-label">Location</div>
+        ${renderList(meta["Location"])}
+
+        <div class="detail-label">Author</div>
+        ${renderList(meta["Author"])}
+
+        <div class="detail-label">Call Number</div>
+        ${renderList(meta["Call Number"])}
+      `;
     });
 
-    cy.on("tap", (evt) => {
-      if(evt.target === cy){
-        cy.elements().removeClass("dim focus selected");
-        clearDetails();
+    // Clicking empty background clears highlight (optional)
+    cy.on("tap", function(evt) {
+      if (evt.target === cy) {
+        cy.elements().removeClass("faded highlighted");
       }
     });
 
-    const t1 = performance.now();
-    timePill.textContent = "ms: " + Math.round(t1 - t0);
-    setStatus(`Showing results for “${raw}”. Click a node for details.`);
-    setMessage(`Loaded ${cy.nodes().length} nodes and ${cy.edges().length} edges.`, "good");
-  }catch(err){
-    console.error(err);
-    setStatus("Error.");
-    setMessage(String(err.message || err), "bad");
-  }finally{
-    runBtn.disabled = false;
-  }
-}
+    function escapeHtml(s) {
+      return String(s)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
 
-function renderDetails(nodeId, metaByNode){
-  const meta = metaByNode.get(nodeId);
-
-  detailsEmpty.style.display = "none";
-  detailsWrap.style.display = "block";
-  detailsKv.innerHTML = "";
-
-  // URI
-  detailsUri.textContent = meta?.uri ? `URI: ${meta.uri}` : `ID: ${nodeId}`;
-
-  if(!meta){
-    const div = document.createElement("div");
-    div.className = "msg";
-    div.textContent = "No metadata stored for this node (it may be a literal node).";
-    detailsKv.appendChild(div);
-    return;
-  }
-
-  // Render properties
-  // Sort keys for consistent display
-  const entries = Array.from(meta.props.entries()).sort((a,b) => a[0].localeCompare(b[0]));
-  if(entries.length === 0){
-    const div = document.createElement("div");
-    div.className = "msg";
-    div.textContent = "No properties captured for this node from the current query results.";
-    detailsKv.appendChild(div);
-    return;
-  }
-
-  for(const [k, values] of entries){
-    const row = document.createElement("div");
-    row.className = "row";
-
-    const kk = document.createElement("div");
-    kk.className = "k";
-    kk.textContent = k;
-
-    const vv = document.createElement("div");
-    vv.className = "v";
-
-    // de-dupe values
-    const uniq = Array.from(new Set(values.map(v => String(v))));
-
-    // If values look like URIs, link them
-    vv.innerHTML = uniq.map(v => {
-      if(v.startsWith("http://") || v.startsWith("https://")){
-        return `<div><a href="${v}" target="_blank" rel="noopener noreferrer">${v}</a></div>`;
-      }
-      return `<div>${escapeHtml(v)}</div>`;
-    }).join("");
-
-    row.appendChild(kk);
-    row.appendChild(vv);
-    detailsKv.appendChild(row);
-  }
-}
-
-function escapeHtml(s){
-  return String(s)
-    .replaceAll("&","&amp;")
-    .replaceAll("<","&lt;")
-    .replaceAll(">","&gt;")
-    .replaceAll('"',"&quot;")
-    .replaceAll("'","&#039;");
-}
-
-// Buttons
-runBtn.addEventListener("click", runSearch);
-qEl.addEventListener("keydown", (e) => {
-  if(e.key === "Enter") runSearch();
-});
-
-clearBtn.addEventListener("click", () => {
-  qEl.value = "";
-  cy.elements().remove();
-  updateCounts();
-  timePill.textContent = "ms: —";
-  setStatus("Ready.");
-  setMessage("");
-  clearDetails();
-});
-
-fitBtn.addEventListener("click", () => cy.fit(undefined, 30));
-
-layoutBtn.addEventListener("click", () => {
-  const i = layouts.indexOf(currentLayout);
-  const next = layouts[(i+1) % layouts.length];
-  applyLayout(next);
-});
-
-resetStyleBtn.addEventListener("click", () => {
-  cy.elements().removeClass("dim focus selected");A
-  cy.fit(undefined, 30);
-  clearDetails();
-});
-
-exportBtn.addEventListener("click", () => {
-  const png64 = cy.png({ full: true, scale: 2, bg: "transparent" });
-  const a = document.createElement("a");
-  a.href = png64;
-  a.download = "knowledge-graph.png";
-  a.click();
-});
-
-// Initial tip
-setMessage("Type a search term and click Search. Then click a node to open the details panel.", "");
-</script>
+    // Load autocomplete suggestions on page load
+    loadSuggestions();
+  </script>
 </body>
 </html>
