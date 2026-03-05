@@ -80,7 +80,7 @@
     <div id="details">
       <h3>Details</h3>
       <div class="muted">
-        Click a <b>book title</b> node to see Title, Subject, Location, Author, and Call Number here.
+        Click a <b>book title</b> node to see all metadata captured from the current query results.
       </div>
       <div id="detailsContent" style="margin-top: 12px;">
         <span class="muted">No selection yet.</span>
@@ -97,7 +97,6 @@
     const endpoint = "https://api.triplydb.com/datasets/Allisonmransom/deleted-records-knowledge-graph/sparql";
 
     // Match your real predicates from the sample:
-    // prop:title, prop:subject, prop:callNumber (plus optional future fields)
     const FIELD_NAMES = {
       title: ["title"],
       subject: ["subject"],
@@ -106,7 +105,6 @@
       callNumber: ["callnumber"]
     };
 
-    // Autocomplete pulls literals for these predicate local-names.
     const AUTOCOMPLETE_FIELDS = [
       ...FIELD_NAMES.title,
       ...FIELD_NAMES.subject,
@@ -191,7 +189,6 @@
       return i >= 0 ? u.slice(i + 1) : u;
     }
 
-    // Use "includes" so callNumber/callnumber both work and future variations still match.
     function matchesAnyLocalName(uri, list) {
       const ln = localName(uri).toLowerCase();
       return list.some(x => ln.includes(String(x).toLowerCase()));
@@ -216,8 +213,11 @@
      * =========================
      * Data stores
      * =========================
+     * bookMeta:
+     *  - Always includes Title
+     *  - Also includes a special key "All fields" that stores every predicate/value captured
      */
-    let bookMeta = {}; // bookId -> { Title, Subject[], Location[], Author[], Call Number[] }
+    let bookMeta = {}; // bookId -> { Title: string, "All fields": { pred: [values...] }, ...optional buckets }
 
     /**
      * =========================
@@ -282,11 +282,8 @@
 
     /**
      * =========================
-     * Search + query (UPDATED)
+     * Search + query
      * =========================
-     * - Finds matching rows by literal text
-     * - Pulls all triples for those rows
-     * - Also returns ?oLabel for URI objects when available
      */
     async function runSearch() {
       const raw = document.getElementById("searchBox").value.trim();
@@ -337,12 +334,11 @@ LIMIT 3000
 
     /**
      * =========================
-     * Build book-centric graph (UPDATED)
+     * Build book-centric graph
      * =========================
-     * - Uses prop:title (local-name contains "title") as the book node label
-     * - Includes BOTH literal and URI objects as metadata
-     * - Uses ?oLabel for URI objects if available, otherwise falls back to localName(uri)
-     * - Populates details panel fields using your real predicates
+     * - Uses title literal as the main book node (large)
+     * - Includes literal + URI objects as metadata (small)
+     * - GUARANTEES metadata appears by storing "All fields" for each book
      */
     function buildBookCentricGraph(data) {
       cy.elements().remove();
@@ -379,37 +375,35 @@ LIMIT 3000
         if (!nodes[bookId]) {
           nodes[bookId] = { data: { id: bookId, label: bookLabel, size: 10, kind: "book" } };
 
+          // Store title + an "All fields" map for guaranteed display
           bookMeta[bookId] = {
-            "Title": title,
-            "Subject": [],
-            "Location": [],
-            "Author": [],
-            "Call Number": []
+            "Title": [title],
+            "All fields": {} // predicate -> [values...]
           };
         }
 
-        // skip title triples (they identify the book node)
+        // Skip title predicate (used to identify the book node)
         if (matchesAnyLocalName(p, FIELD_NAMES.title)) return;
 
         const predLN = localName(p);
         const predLabel = predLN;
 
-        // Accept BOTH literals and URIs
-        let value;        // stable value for IDs (URI or literal)
-        let displayValue; // human-friendly label (literal text or URI label/localName)
+        // Accept both literal and URI objects
+        let stableValue;
+        let displayValue;
 
         if (o.type === "literal") {
-          value = o.value;
+          stableValue = o.value;
           displayValue = o.value;
         } else if (o.type === "uri") {
-          value = o.value;
+          stableValue = o.value;
           displayValue = b.oLabel ? b.oLabel.value : localName(o.value);
         } else {
           return;
         }
 
         // Create metadata node (small)
-        const metaId = safeId("meta:", predLN + "|" + value);
+        const metaId = safeId("meta:", predLN + "|" + stableValue);
         if (!nodes[metaId]) {
           nodes[metaId] = { data: { id: metaId, label: displayValue, size: 2, kind: "meta" } };
         }
@@ -422,19 +416,21 @@ LIMIT 3000
           };
         }
 
-        // Populate the Details panel fields (using your real predicates)
-        if (matchesAnyLocalName(p, FIELD_NAMES.subject)) bookMeta[bookId]["Subject"].push(displayValue);
-        if (matchesAnyLocalName(p, FIELD_NAMES.location)) bookMeta[bookId]["Location"].push(displayValue);
-        if (matchesAnyLocalName(p, FIELD_NAMES.author)) bookMeta[bookId]["Author"].push(displayValue);
-        if (matchesAnyLocalName(p, FIELD_NAMES.callNumber)) bookMeta[bookId]["Call Number"].push(displayValue);
+        // GUARANTEED: store every predicate/value under "All fields"
+        if (!bookMeta[bookId]["All fields"][predLN]) {
+          bookMeta[bookId]["All fields"][predLN] = [];
+        }
+        bookMeta[bookId]["All fields"][predLN].push(displayValue);
       });
 
-      // de-dupe details arrays
+      // De-dupe all fields
       Object.keys(bookMeta).forEach(bookId => {
-        bookMeta[bookId]["Subject"] = uniq(bookMeta[bookId]["Subject"]);
-        bookMeta[bookId]["Location"] = uniq(bookMeta[bookId]["Location"]);
-        bookMeta[bookId]["Author"] = uniq(bookMeta[bookId]["Author"]);
-        bookMeta[bookId]["Call Number"] = uniq(bookMeta[bookId]["Call Number"]);
+        const all = bookMeta[bookId]["All fields"];
+        for (const k of Object.keys(all)) {
+          all[k] = uniq(all[k]);
+        }
+        // De-dupe Title array too
+        bookMeta[bookId]["Title"] = uniq(bookMeta[bookId]["Title"]);
       });
 
       cy.add(Object.values(nodes));
@@ -464,6 +460,8 @@ LIMIT 3000
      * =========================
      * Click behaviors
      * =========================
+     * - Highlights neighborhood
+     * - GUARANTEED details: displays ALL fields from bookMeta[bookId]["All fields"]
      */
     cy.on("tap", "node", function(evt) {
       const node = evt.target;
@@ -476,37 +474,40 @@ LIMIT 3000
 
       // Details only for book nodes
       if (node.data("kind") !== "book") {
-        detailsContent.innerHTML = `<span class="muted">Tip: click a <b>book title</b> node to see bibliographic fields.</span>`;
+        detailsContent.innerHTML = `<span class="muted">Tip: click a <b>book title</b> node to see metadata.</span>`;
         return;
       }
 
-      const meta = bookMeta[node.id()];
-      if (!meta) {
-        detailsContent.innerHTML = `<span class="muted">No stored metadata for this book (from current results).</span>`;
-        return;
+      const meta = bookMeta[node.id()] || {};
+      const allFields = meta["All fields"] || {};
+
+      // Render Title first (always present)
+      let html = "";
+      html += `<div class="detail-label">Title</div>`;
+      html += (meta["Title"] && meta["Title"][0])
+        ? `<div class="detail-value">${escapeHtml(meta["Title"][0])}</div>`
+        : `<div class="muted">—</div>`;
+
+      // Render everything else (guaranteed)
+      const keys = Object.keys(allFields).sort((a, b) => a.localeCompare(b));
+
+      if (keys.length === 0) {
+        html += `<div class="muted" style="margin-top:10px;">No other metadata found for this book in the current results.</div>`;
+      } else {
+        keys.forEach(key => {
+          html += `<div class="detail-label">${escapeHtml(key)}</div>`;
+          const vals = allFields[key] || [];
+          if (vals.length === 0) {
+            html += `<div class="muted">—</div>`;
+          } else {
+            vals.forEach(v => {
+              html += `<div class="detail-value">${escapeHtml(v)}</div>`;
+            });
+          }
+        });
       }
 
-      const renderList = (arr) => {
-        if (!arr || arr.length === 0) return `<div class="muted">—</div>`;
-        return arr.map(v => `<div class="detail-value">${escapeHtml(v)}</div>`).join("");
-      };
-
-      detailsContent.innerHTML = `
-        <div class="detail-label">Title</div>
-        <div class="detail-value">${escapeHtml(meta["Title"] || "—")}</div>
-
-        <div class="detail-label">Subject</div>
-        ${renderList(meta["Subject"])}
-
-        <div class="detail-label">Location</div>
-        ${renderList(meta["Location"])}
-
-        <div class="detail-label">Author</div>
-        ${renderList(meta["Author"])}
-
-        <div class="detail-label">Call Number</div>
-        ${renderList(meta["Call Number"])}
-      `;
+      detailsContent.innerHTML = html;
     });
 
     cy.on("tap", function(evt) {
