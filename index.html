@@ -27,12 +27,7 @@
     #searchBox { padding: 8px; font-size: 14px; width: 320px; }
     button { padding: 8px 12px; font-size: 14px; cursor: pointer; }
 
-    /* Graph + details side-by-side */
-    #main {
-      display: flex;
-      height: 75vh;
-      width: 100%;
-    }
+    #main { display: flex; height: 75vh; width: 100%; }
     #cy { flex: 3; min-width: 0; }
     #details {
       flex: 1;
@@ -70,7 +65,6 @@
   </div>
 
   <div id="controls">
-    <!-- Autocomplete -->
     <input id="searchBox" list="suggestions" placeholder="Search titles, subjects, locations, authors…" />
     <datalist id="suggestions"></datalist>
 
@@ -102,24 +96,22 @@
      */
     const endpoint = "https://api.triplydb.com/datasets/Allisonmransom/deleted-records-knowledge-graph/sparql";
 
-    // These are the *predicate local-names* this file treats as your core bibliographic fields.
-    // If your TTL uses different endings, add them here (case-insensitive match).
+    // Match your real predicates from the sample:
+    // prop:title, prop:subject, prop:callNumber (plus optional future fields)
     const FIELD_NAMES = {
-      title: ["book", "title"],
+      title: ["title"],
       subject: ["subject"],
       location: ["location"],
-      author: ["author", "creator"],
-      callNumber: ["callnumber", "callNumber"]
+      author: ["author", "creator", "contributor"],
+      callNumber: ["callnumber"]
     };
 
-    // Autocomplete pulls literals for these predicates (by local-name match).
+    // Autocomplete pulls literals for these predicate local-names.
     const AUTOCOMPLETE_FIELDS = [
       ...FIELD_NAMES.title,
       ...FIELD_NAMES.subject,
       ...FIELD_NAMES.location,
       ...FIELD_NAMES.author
-      // (call numbers can be noisy; add if you want)
-      // ...FIELD_NAMES.callNumber
     ];
 
     /**
@@ -187,43 +179,45 @@
      * Helpers
      * =========================
      */
-    function setStatus(text) {
-      statusPill.textContent = text;
-    }
+    function setStatus(text) { statusPill.textContent = text; }
 
     function escapeForSparqlString(s) {
-      // minimal escaping for literal string injection
       return String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
     }
 
     function localName(uri) {
-      // best-effort extraction: after last # or /
       let u = String(uri);
       let i = Math.max(u.lastIndexOf("#"), u.lastIndexOf("/"));
       return i >= 0 ? u.slice(i + 1) : u;
     }
 
+    // Use "includes" so callNumber/callnumber both work and future variations still match.
     function matchesAnyLocalName(uri, list) {
       const ln = localName(uri).toLowerCase();
-      return list.some(x => ln === String(x).toLowerCase());
+      return list.some(x => ln.includes(String(x).toLowerCase()));
     }
 
     function safeId(prefix, s) {
-      // Cytoscape IDs must be unique strings; encode to avoid weird characters
       return prefix + encodeURIComponent(String(s));
     }
 
-    function uniq(arr) {
-      return Array.from(new Set(arr));
+    function uniq(arr) { return Array.from(new Set(arr)); }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
     }
 
     /**
      * =========================
-     * Data structures
+     * Data stores
      * =========================
-     * bookMeta[bookId] = { Title: "...", Subject: [...], Location: [...], Author: [...], "Call Number": [...] }
      */
-    let bookMeta = {};
+    let bookMeta = {}; // bookId -> { Title, Subject[], Location[], Author[], Call Number[] }
 
     /**
      * =========================
@@ -249,16 +243,17 @@
 
     /**
      * =========================
-     * Autocomplete suggestions
+     * Autocomplete
      * =========================
-     * Loads distinct literal values for key predicates (title/subject/location/author).
      */
     async function loadSuggestions() {
       try {
         setStatus("Loading suggestions…");
 
-        // Regex matches predicate local name endings, e.g. /subject or #subject, case-insensitive
-        const pattern = AUTOCOMPLETE_FIELDS.map(x => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+        const pattern = AUTOCOMPLETE_FIELDS
+          .map(x => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+          .join("|");
+
         const sparql = `
           SELECT DISTINCT ?value WHERE {
             ?s ?p ?value .
@@ -287,12 +282,11 @@
 
     /**
      * =========================
-     * Search + build a book-centric graph
+     * Search + query (UPDATED)
      * =========================
-     * Two-stage query:
-     * 1) Find matching row resources by any literal containing the search string
-     * 2) Pull ALL triples for those matching rows, so we can build:
-     *    Book title node (center) -> metadata nodes (subject/location/author/callnumber/etc.)
+     * - Finds matching rows by literal text
+     * - Pulls all triples for those rows
+     * - Also returns ?oLabel for URI objects when available
      */
     async function runSearch() {
       const raw = document.getElementById("searchBox").value.trim();
@@ -307,19 +301,27 @@
       try {
         const q = escapeForSparqlString(raw.toLowerCase());
 
-        // Subselect grabs matching rows; outer query pulls all triples for those rows.
         const sparql = `
-          SELECT ?row ?p ?o WHERE {
-            {
-              SELECT DISTINCT ?row WHERE {
-                ?row ?p1 ?o1 .
-                FILTER(isLiteral(?o1))
-                FILTER(CONTAINS(LCASE(STR(?o1)), "${q}"))
-              } LIMIT 50
-            }
-            ?row ?p ?o .
-          }
-          LIMIT 3000
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+
+SELECT ?row ?p ?o ?oLabel WHERE {
+  {
+    SELECT DISTINCT ?row WHERE {
+      ?row ?p1 ?o1 .
+      FILTER(isLiteral(?o1))
+      FILTER(CONTAINS(LCASE(STR(?o1)), "${q}"))
+    } LIMIT 50
+  }
+  ?row ?p ?o .
+
+  OPTIONAL {
+    FILTER(isIRI(?o))
+    ?o (rdfs:label|skos:prefLabel|dcterms:title) ?oLabel .
+  }
+}
+LIMIT 3000
         `;
 
         const data = await sparqlSelect(sparql);
@@ -335,19 +337,19 @@
 
     /**
      * =========================
-     * Build book-centric graph
+     * Build book-centric graph (UPDATED)
      * =========================
-     * - Determine each row's title (from predicate local name "book" or "title")
-     * - Use the title literal as the central node (merged across rows with same title)
-     * - Add metadata nodes and edges
-     * - Store book metadata for details panel (Title/Subject/Location/Author/Call Number)
+     * - Uses prop:title (local-name contains "title") as the book node label
+     * - Includes BOTH literal and URI objects as metadata
+     * - Uses ?oLabel for URI objects if available, otherwise falls back to localName(uri)
+     * - Populates details panel fields using your real predicates
      */
     function buildBookCentricGraph(data) {
       cy.elements().remove();
       bookMeta = {};
 
       const nodes = {};
-      const edges = [];
+      const edges = {};
 
       // 1) Gather titles per row
       const rowTitle = {}; // rowURI -> titleString
@@ -356,31 +358,27 @@
         const p = b.p.value;
         const o = b.o;
 
-        if (o.type === "literal" && (matchesAnyLocalName(p, FIELD_NAMES.title))) {
+        if (o.type === "literal" && matchesAnyLocalName(p, FIELD_NAMES.title)) {
           rowTitle[row] = o.value;
         }
       });
 
-      // 2) Build graph from all triples, centered on book title
+      // 2) Build nodes/edges centered on book title
       data.results.bindings.forEach(b => {
         const row = b.row.value;
         const p = b.p.value;
         const o = b.o;
 
         const title = rowTitle[row];
-        if (!title) {
-          // If a row doesn't have a title triple, skip it (or you could fallback to row URI)
-          return;
-        }
+        if (!title) return;
 
         const bookId = safeId("book:", title);
         const bookLabel = title;
 
-        // Create the book node (large)
+        // create book node (large)
         if (!nodes[bookId]) {
           nodes[bookId] = { data: { id: bookId, label: bookLabel, size: 10, kind: "book" } };
 
-          // Initialize details store
           bookMeta[bookId] = {
             "Title": title,
             "Subject": [],
@@ -390,42 +388,48 @@
           };
         }
 
-        // Skip title predicate in edge creation (we already used it to identify the book)
-        if (matchesAnyLocalName(p, FIELD_NAMES.title)) {
-          return;
-        }
-
-        // Only build metadata links for literal objects (most MARC-ish exports do this)
-        // If you have URI objects you want to include, we can extend this.
-        if (o.type !== "literal") return;
+        // skip title triples (they identify the book node)
+        if (matchesAnyLocalName(p, FIELD_NAMES.title)) return;
 
         const predLN = localName(p);
-        const predLabel = predLN; // edge label
-        const value = o.value;
+        const predLabel = predLN;
+
+        // Accept BOTH literals and URIs
+        let value;        // stable value for IDs (URI or literal)
+        let displayValue; // human-friendly label (literal text or URI label/localName)
+
+        if (o.type === "literal") {
+          value = o.value;
+          displayValue = o.value;
+        } else if (o.type === "uri") {
+          value = o.value;
+          displayValue = b.oLabel ? b.oLabel.value : localName(o.value);
+        } else {
+          return;
+        }
 
         // Create metadata node (small)
         const metaId = safeId("meta:", predLN + "|" + value);
         if (!nodes[metaId]) {
-          nodes[metaId] = { data: { id: metaId, label: value, size: 2, kind: "meta" } };
+          nodes[metaId] = { data: { id: metaId, label: displayValue, size: 2, kind: "meta" } };
         }
 
-        edges.push({
-          data: {
-            id: safeId("e:", bookId + "|" + metaId + "|" + predLN),
-            source: bookId,
-            target: metaId,
-            label: predLabel
-          }
-        });
+        // Create edge book -> metadata (de-dupe)
+        const edgeId = safeId("e:", bookId + "|" + metaId + "|" + predLN);
+        if (!edges[edgeId]) {
+          edges[edgeId] = {
+            data: { id: edgeId, source: bookId, target: metaId, label: predLabel }
+          };
+        }
 
-        // Store key fields for the details panel (case-insensitive predicate local-name match)
-        if (matchesAnyLocalName(p, FIELD_NAMES.subject)) bookMeta[bookId]["Subject"].push(value);
-        if (matchesAnyLocalName(p, FIELD_NAMES.location)) bookMeta[bookId]["Location"].push(value);
-        if (matchesAnyLocalName(p, FIELD_NAMES.author)) bookMeta[bookId]["Author"].push(value);
-        if (matchesAnyLocalName(p, FIELD_NAMES.callNumber)) bookMeta[bookId]["Call Number"].push(value);
+        // Populate the Details panel fields (using your real predicates)
+        if (matchesAnyLocalName(p, FIELD_NAMES.subject)) bookMeta[bookId]["Subject"].push(displayValue);
+        if (matchesAnyLocalName(p, FIELD_NAMES.location)) bookMeta[bookId]["Location"].push(displayValue);
+        if (matchesAnyLocalName(p, FIELD_NAMES.author)) bookMeta[bookId]["Author"].push(displayValue);
+        if (matchesAnyLocalName(p, FIELD_NAMES.callNumber)) bookMeta[bookId]["Call Number"].push(displayValue);
       });
 
-      // De-dupe details arrays
+      // de-dupe details arrays
       Object.keys(bookMeta).forEach(bookId => {
         bookMeta[bookId]["Subject"] = uniq(bookMeta[bookId]["Subject"]);
         bookMeta[bookId]["Location"] = uniq(bookMeta[bookId]["Location"]);
@@ -434,11 +438,9 @@
       });
 
       cy.add(Object.values(nodes));
-      cy.add(edges);
-
+      cy.add(Object.values(edges));
       cy.layout({ name: "cose" }).run();
 
-      // Reset details prompt
       detailsContent.innerHTML = `<span class="muted">Click a <b>book title</b> node to see metadata.</span>`;
     }
 
@@ -460,9 +462,7 @@
 
     /**
      * =========================
-     * Click behaviors:
-     * - Highlight neighborhood (book + its metadata)
-     * - Show details panel for book nodes
+     * Click behaviors
      * =========================
      */
     cy.on("tap", "node", function(evt) {
@@ -470,14 +470,12 @@
 
       // Highlight neighborhood and fade others
       cy.elements().removeClass("faded highlighted");
-
       const neighborhood = node.closedNeighborhood();
       neighborhood.addClass("highlighted");
       cy.elements().not(neighborhood).addClass("faded");
 
       // Details only for book nodes
-      const isBook = node.data("kind") === "book";
-      if (!isBook) {
+      if (node.data("kind") !== "book") {
         detailsContent.innerHTML = `<span class="muted">Tip: click a <b>book title</b> node to see bibliographic fields.</span>`;
         return;
       }
@@ -511,23 +509,13 @@
       `;
     });
 
-    // Clicking empty background clears highlight (optional)
     cy.on("tap", function(evt) {
       if (evt.target === cy) {
         cy.elements().removeClass("faded highlighted");
       }
     });
 
-    function escapeHtml(s) {
-      return String(s)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
-    }
-
-    // Load autocomplete suggestions on page load
+    // Run autocomplete on load
     loadSuggestions();
   </script>
 </body>
